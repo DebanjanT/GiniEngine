@@ -26,9 +26,18 @@ void ImGuiLayer::Init() {
 
   ImGuiIO &io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+  io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+  io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
 
   // Set default font size
   io.FontGlobalScale = 1.0f;
+
+  // When viewports are enabled, tweak WindowRounding/WindowBg
+  ImGuiStyle &style = ImGui::GetStyle();
+  if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+    style.WindowRounding = 0.0f;
+    style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+  }
 
   SetDarkTheme();
 
@@ -71,8 +80,18 @@ void ImGuiLayer::End() {
   if (!s_Initialized)
     return;
 
+  ImGuiIO &io = ImGui::GetIO();
+
   ImGui::Render();
   ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+  // Update and render additional platform windows
+  if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+    GLFWwindow *backup_current_context = glfwGetCurrentContext();
+    ImGui::UpdatePlatformWindows();
+    ImGui::RenderPlatformWindowsDefault();
+    glfwMakeContextCurrent(backup_current_context);
+  }
 }
 
 void ImGuiLayer::OnEvent(Event &event) {

@@ -69,11 +69,11 @@ FetchContent_Declare(
     GIT_TAG master
 )
 
-# Dear ImGui
+# Dear ImGui (docking branch for dockable panels)
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG v1.89.9
+    GIT_TAG docking
 )
 
 # OpenAL Soft - Audio

@@ -105,25 +105,95 @@ void EditorApp::OnRender() {
   if (m_ActiveScene) {
     // Draw grid
     for (int i = -10; i <= 10; i++) {
-      Renderer3D::DrawLine(Vec3(i, 0, -10), Vec3(i, 0, 10),
-                           Color(0.3f, 0.3f, 0.3f));
-      Renderer3D::DrawLine(Vec3(-10, 0, i), Vec3(10, 0, i),
-                           Color(0.3f, 0.3f, 0.3f));
+      Color gridColor =
+          (i == 0) ? Color(0.5f, 0.5f, 0.5f) : Color(0.3f, 0.3f, 0.3f);
+      Renderer3D::DrawLine(Vec3(i, 0, -10), Vec3(i, 0, 10), gridColor);
+      Renderer3D::DrawLine(Vec3(-10, 0, i), Vec3(10, 0, i), gridColor);
     }
+    // Draw axis lines
+    Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(5, 0, 0),
+                         Color(1.0f, 0.2f, 0.2f)); // X red
+    Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(0, 5, 0),
+                         Color(0.2f, 1.0f, 0.2f)); // Y green
+    Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(0, 0, 5),
+                         Color(0.2f, 0.2f, 1.0f)); // Z blue
 
-    // Draw entities with transforms
+    // Draw entities with transforms as cubes
     auto &world = m_ActiveScene->GetWorld();
     auto view = world.GetRegistry().view<TransformComponent>();
+    int entityIndex = 0;
     for (auto entity : view) {
       auto &transform = view.get<TransformComponent>(entity);
 
-      // Draw a small cube for each entity
-      Mat4 modelMatrix = transform.GetTransform();
-
-      // Highlight selected entity
+      // Different colors for each cube
+      Color cubeColor;
       if (entity == m_SelectedEntity) {
-        // Draw selection outline
+        cubeColor = Color(1.0f, 0.8f, 0.2f); // Yellow for selected
+      } else {
+        // Cycle through colors
+        switch (entityIndex % 3) {
+        case 0:
+          cubeColor = Color(0.8f, 0.3f, 0.3f);
+          break; // Red
+        case 1:
+          cubeColor = Color(0.3f, 0.8f, 0.3f);
+          break; // Green
+        case 2:
+          cubeColor = Color(0.3f, 0.3f, 0.8f);
+          break; // Blue
+        }
       }
+
+      // Draw cube at entity position
+      Renderer3D::DrawCube(transform.position, transform.scale, cubeColor);
+
+      // Draw selection wireframe for selected entity
+      if (entity == m_SelectedEntity) {
+        Vec3 halfSize = transform.scale * 0.5f;
+        Vec3 p = transform.position;
+        Color wireColor(1.0f, 1.0f, 0.0f);
+        // Bottom face
+        Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, -halfSize.z),
+                             p + Vec3(halfSize.x, -halfSize.y, -halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, -halfSize.z),
+                             p + Vec3(halfSize.x, -halfSize.y, halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, halfSize.z),
+                             p + Vec3(-halfSize.x, -halfSize.y, halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, halfSize.z),
+                             p + Vec3(-halfSize.x, -halfSize.y, -halfSize.z),
+                             wireColor);
+        // Top face
+        Renderer3D::DrawLine(p + Vec3(-halfSize.x, halfSize.y, -halfSize.z),
+                             p + Vec3(halfSize.x, halfSize.y, -halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(halfSize.x, halfSize.y, -halfSize.z),
+                             p + Vec3(halfSize.x, halfSize.y, halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(halfSize.x, halfSize.y, halfSize.z),
+                             p + Vec3(-halfSize.x, halfSize.y, halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(-halfSize.x, halfSize.y, halfSize.z),
+                             p + Vec3(-halfSize.x, halfSize.y, -halfSize.z),
+                             wireColor);
+        // Vertical edges
+        Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, -halfSize.z),
+                             p + Vec3(-halfSize.x, halfSize.y, -halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, -halfSize.z),
+                             p + Vec3(halfSize.x, halfSize.y, -halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, halfSize.z),
+                             p + Vec3(halfSize.x, halfSize.y, halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, halfSize.z),
+                             p + Vec3(-halfSize.x, halfSize.y, halfSize.z),
+                             wireColor);
+      }
+
+      entityIndex++;
     }
   }
 
@@ -191,12 +261,17 @@ void EditorApp::OnEvent(Event &event) {
 }
 
 void EditorApp::SetupDockspace() {
-  // Simple fullscreen window setup (docking requires ImGui docking branch)
-  ImGuiWindowFlags windowFlags = ImGuiWindowFlags_MenuBar;
+  static bool dockspaceOpen = true;
+  static bool firstTime = true;
+  static ImGuiDockNodeFlags dockspaceFlags = ImGuiDockNodeFlags_None;
+
+  ImGuiWindowFlags windowFlags =
+      ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
 
   ImGuiViewport *viewport = ImGui::GetMainViewport();
-  ImGui::SetNextWindowPos(viewport->Pos);
-  ImGui::SetNextWindowSize(viewport->Size);
+  ImGui::SetNextWindowPos(viewport->WorkPos);
+  ImGui::SetNextWindowSize(viewport->WorkSize);
+  ImGui::SetNextWindowViewport(viewport->ID);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
   windowFlags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
@@ -205,9 +280,45 @@ void EditorApp::SetupDockspace() {
       ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-  static bool open = true;
-  ImGui::Begin("MainWindow", &open, windowFlags);
+  ImGui::Begin("DockSpace Demo", &dockspaceOpen, windowFlags);
   ImGui::PopStyleVar(3);
+
+  // DockSpace
+  ImGuiIO &io = ImGui::GetIO();
+  if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable) {
+    ImGuiID dockspaceId = ImGui::GetID("MyDockSpace");
+    ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), dockspaceFlags);
+
+    // Setup default layout on first run
+    if (firstTime) {
+      firstTime = false;
+      ImGui::DockBuilderRemoveNode(dockspaceId);
+      ImGui::DockBuilderAddNode(dockspaceId,
+                                dockspaceFlags | ImGuiDockNodeFlags_DockSpace);
+      ImGui::DockBuilderSetNodeSize(dockspaceId, viewport->WorkSize);
+
+      // Split the dockspace
+      ImGuiID dockLeft, dockRight, dockBottom;
+      ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Left, 0.2f, &dockLeft,
+                                  &dockRight);
+      ImGuiID dockRightBottom;
+      ImGui::DockBuilderSplitNode(dockRight, ImGuiDir_Down, 0.25f,
+                                  &dockRightBottom, &dockRight);
+      ImGuiID dockRightRight;
+      ImGui::DockBuilderSplitNode(dockRight, ImGuiDir_Right, 0.25f,
+                                  &dockRightRight, &dockRight);
+
+      // Dock windows to nodes
+      ImGui::DockBuilderDockWindow("Scene Hierarchy", dockLeft);
+      ImGui::DockBuilderDockWindow("Properties", dockRightRight);
+      ImGui::DockBuilderDockWindow("Viewport", dockRight);
+      ImGui::DockBuilderDockWindow("Console", dockRightBottom);
+      ImGui::DockBuilderDockWindow("Stats", dockRightBottom);
+      ImGui::DockBuilderDockWindow("##toolbar", dockRight);
+
+      ImGui::DockBuilderFinish(dockspaceId);
+    }
+  }
 
   ImGui::End();
 }
@@ -347,7 +458,21 @@ void EditorApp::NewScene() {
   m_HierarchyPanel.SetScene(m_ActiveScene);
   m_PropertiesPanel.SetScene(m_ActiveScene);
   m_SelectedEntity = NullEntity;
-  GINI_INFO("New scene created");
+
+  // Create some default entities to click on
+  auto cube1 = m_ActiveScene->CreateEntity("Cube 1");
+  auto &t1 = m_ActiveScene->GetWorld().GetComponent<TransformComponent>(cube1);
+  t1.position = Vec3(-3.0f, 0.5f, 0.0f);
+
+  auto cube2 = m_ActiveScene->CreateEntity("Cube 2");
+  auto &t2 = m_ActiveScene->GetWorld().GetComponent<TransformComponent>(cube2);
+  t2.position = Vec3(0.0f, 0.5f, 0.0f);
+
+  auto cube3 = m_ActiveScene->CreateEntity("Cube 3");
+  auto &t3 = m_ActiveScene->GetWorld().GetComponent<TransformComponent>(cube3);
+  t3.position = Vec3(3.0f, 0.5f, 0.0f);
+
+  GINI_INFO("New scene created with 3 cubes");
 }
 
 void EditorApp::OpenScene() {

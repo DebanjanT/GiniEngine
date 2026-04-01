@@ -1,0 +1,207 @@
+# ===========================================
+# Gini Engine .gitignore
+# ===========================================
+
+# ===========================================
+# Build directories
+# ===========================================
+build/
+build_*/
+out/
+cmake-build-*/
+x64/
+x86/
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+
+# ===========================================
+# CMake generated files
+# ===========================================
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+!CMakePresets.json
+CMakeUserPresets.json
+
+# ===========================================
+# IDE - Visual Studio
+# ===========================================
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.VC.opendb
+ipch/
+*.aps
+*.ncb
+*.opendb
+*.cachefile
+*.VC.db
+*.ilk
+*.pdb
+
+# ===========================================
+# IDE - Visual Studio Code
+# ===========================================
+.vscode/
+*.code-workspace
+
+# ===========================================
+# IDE - JetBrains (CLion, etc.)
+# ===========================================
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# ===========================================
+# IDE - Xcode
+# ===========================================
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+*.moved-aside
+
+# ===========================================
+# Compiled binaries and libraries
+# ===========================================
+*.exe
+*.dll
+*.so
+*.dylib
+*.lib
+*.a
+*.o
+*.obj
+*.pch
+*.gch
+
+# ===========================================
+# Dependencies (fetched by CMake)
+# ===========================================
+_deps/
+external/
+ThirdParty/*/
+!ThirdParty/glad/
+!ThirdParty/stb/
+
+# ===========================================
+# OS generated files
+# ===========================================
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ===========================================
+# Logs and temporary files
+# ===========================================
+*.log
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.backup
+
+# ===========================================
+# Package/Archive files
+# ===========================================
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# ===========================================
+# Documentation generated
+# ===========================================
+docs/html/
+docs/latex/
+Doxyfile.bak
+
+# ===========================================
+# Test and coverage
+# ===========================================
+Testing/
+coverage/
+*.gcov
+*.gcda
+*.gcno
+
+# ===========================================
+# Steam SDK (download separately)
+# ===========================================
+ThirdParty/steamworks_sdk/
+steam_appid.txt
+
+# ===========================================
+# Assets (large files - use Git LFS instead)
+# ===========================================
+# Uncomment if using Git LFS for large assets
+# *.png
+# *.jpg
+# *.jpeg
+# *.tga
+# *.bmp
+# *.psd
+# *.wav
+# *.mp3
+# *.ogg
+# *.fbx
+# *.blend
+
+# ===========================================
+# User-specific files
+# ===========================================
+*.user.json
+local.settings.json
+secrets.h
+config.local.h
+
+# ===========================================
+# Crash dumps
+# ===========================================
+*.dmp
+*.mdmp
+crash_reports/

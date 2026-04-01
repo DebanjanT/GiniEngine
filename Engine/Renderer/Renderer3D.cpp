@@ -1,0 +1,651 @@
+#include "Renderer3D.h"
+#include "Core/Logger.h"
+
+#define GLFW_INCLUDE_NONE
+#include <GLFW/glfw3.h>
+#include <glad/gl.h>
+#include <glm/gtc/matrix_transform.hpp>
+
+namespace Gini {
+
+struct Renderer3DData {
+    Ref<Shader> pbrShader;
+    Ref<Shader> basicShader;
+    Ref<Shader> skyboxShader;
+    Ref<Shader> lineShader;
+    
+    Ref<Mesh> cubeMesh;
+    Ref<Mesh> sphereMesh;
+    Ref<Mesh> planeMesh;
+    
+    Mat4 viewMatrix;
+    Mat4 projectionMatrix;
+    Vec3 cameraPosition;
+    
+    Renderer3DStats stats;
+    
+    bool wireframeMode = false;
+};
+
+static Renderer3DData* s_Data = nullptr;
+
+// PBR Shader source
+static const char* s_PBRVertexShader = R"(
+#version 410 core
+layout (location = 0) in vec3 a_Position;
+layout (location = 1) in vec3 a_Normal;
+layout (location = 2) in vec2 a_TexCoords;
+layout (location = 3) in vec3 a_Tangent;
+layout (location = 4) in vec3 a_Bitangent;
+
+out vec3 v_WorldPos;
+out vec3 v_Normal;
+out vec2 v_TexCoords;
+out mat3 v_TBN;
+
+uniform mat4 u_Model;
+uniform mat4 u_View;
+uniform mat4 u_Projection;
+uniform mat3 u_NormalMatrix;
+
+void main() {
+    v_WorldPos = vec3(u_Model * vec4(a_Position, 1.0));
+    v_Normal = u_NormalMatrix * a_Normal;
+    v_TexCoords = a_TexCoords;
+    
+    vec3 T = normalize(u_NormalMatrix * a_Tangent);
+    vec3 B = normalize(u_NormalMatrix * a_Bitangent);
+    vec3 N = normalize(v_Normal);
+    v_TBN = mat3(T, B, N);
+    
+    gl_Position = u_Projection * u_View * vec4(v_WorldPos, 1.0);
+}
+)";
+
+static const char* s_PBRFragmentShader = R"(
+#version 410 core
+out vec4 FragColor;
+
+in vec3 v_WorldPos;
+in vec3 v_Normal;
+in vec2 v_TexCoords;
+in mat3 v_TBN;
+
+// Material
+uniform vec3 u_Material_albedo;
+uniform float u_Material_metallic;
+uniform float u_Material_roughness;
+uniform float u_Material_ao;
+uniform vec3 u_Material_emissive;
+
+// Textures
+uniform sampler2D u_AlbedoMap;
+uniform sampler2D u_NormalMap;
+uniform sampler2D u_MetallicMap;
+uniform sampler2D u_RoughnessMap;
+uniform sampler2D u_AOMap;
+
+uniform int u_HasAlbedoMap;
+uniform int u_HasNormalMap;
+uniform int u_HasMetallicMap;
+uniform int u_HasRoughnessMap;
+uniform int u_HasAOMap;
+
+// Lights
+struct AmbientLight {
+    vec3 color;
+    float intensity;
+};
+
+struct DirectionalLight {
+    vec3 direction;
+    vec3 color;
+    float intensity;
+};
+
+struct PointLight {
+    vec3 position;
+    vec3 color;
+    float intensity;
+    float constant;
+    float linear;
+    float quadratic;
+    float radius;
+};
+
+uniform AmbientLight u_AmbientLight;
+uniform DirectionalLight u_DirectionalLight;
+uniform int u_HasDirectionalLight;
+uniform PointLight u_PointLights[32];
+uniform int u_PointLightCount;
+
+uniform vec3 u_CameraPos;
+
+const float PI = 3.14159265359;
+
+// PBR functions
+float DistributionGGX(vec3 N, vec3 H, float roughness) {
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH * NdotH;
+    
+    float nom = a2;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+    
+    return nom / denom;
+}
+
+float GeometrySchlickGGX(float NdotV, float roughness) {
+    float r = (roughness + 1.0);
+    float k = (r * r) / 8.0;
+    
+    float nom = NdotV;
+    float denom = NdotV * (1.0 - k) + k;
+    
+    return nom / denom;
+}
+
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
+    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
+    
+    return ggx1 * ggx2;
+}
+
+vec3 fresnelSchlick(float cosTheta, vec3 F0) {
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+void main() {
+    // Get material properties
+    vec3 albedo = u_Material_albedo;
+    float metallic = u_Material_metallic;
+    float roughness = u_Material_roughness;
+    float ao = u_Material_ao;
+    
+    if (u_HasAlbedoMap == 1) {
+        albedo = pow(texture(u_AlbedoMap, v_TexCoords).rgb, vec3(2.2));
+    }
+    if (u_HasMetallicMap == 1) {
+        metallic = texture(u_MetallicMap, v_TexCoords).r;
+    }
+    if (u_HasRoughnessMap == 1) {
+        roughness = texture(u_RoughnessMap, v_TexCoords).r;
+    }
+    if (u_HasAOMap == 1) {
+        ao = texture(u_AOMap, v_TexCoords).r;
+    }
+    
+    // Normal mapping
+    vec3 N = normalize(v_Normal);
+    if (u_HasNormalMap == 1) {
+        N = texture(u_NormalMap, v_TexCoords).rgb;
+        N = N * 2.0 - 1.0;
+        N = normalize(v_TBN * N);
+    }
+    
+    vec3 V = normalize(u_CameraPos - v_WorldPos);
+    
+    vec3 F0 = vec3(0.04);
+    F0 = mix(F0, albedo, metallic);
+    
+    vec3 Lo = vec3(0.0);
+    
+    // Directional light
+    if (u_HasDirectionalLight == 1) {
+        vec3 L = normalize(-u_DirectionalLight.direction);
+        vec3 H = normalize(V + L);
+        vec3 radiance = u_DirectionalLight.color * u_DirectionalLight.intensity;
+        
+        float NDF = DistributionGGX(N, H, roughness);
+        float G = GeometrySmith(N, V, L, roughness);
+        vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+        
+        vec3 numerator = NDF * G * F;
+        float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+        vec3 specular = numerator / denominator;
+        
+        vec3 kS = F;
+        vec3 kD = vec3(1.0) - kS;
+        kD *= 1.0 - metallic;
+        
+        float NdotL = max(dot(N, L), 0.0);
+        Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+    }
+    
+    // Point lights
+    for (int i = 0; i < u_PointLightCount; i++) {
+        vec3 L = normalize(u_PointLights[i].position - v_WorldPos);
+        vec3 H = normalize(V + L);
+        float distance = length(u_PointLights[i].position - v_WorldPos);
+        float attenuation = 1.0 / (u_PointLights[i].constant + 
+                                   u_PointLights[i].linear * distance + 
+                                   u_PointLights[i].quadratic * distance * distance);
+        vec3 radiance = u_PointLights[i].color * u_PointLights[i].intensity * attenuation;
+        
+        float NDF = DistributionGGX(N, H, roughness);
+        float G = GeometrySmith(N, V, L, roughness);
+        vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+        
+        vec3 numerator = NDF * G * F;
+        float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+        vec3 specular = numerator / denominator;
+        
+        vec3 kS = F;
+        vec3 kD = vec3(1.0) - kS;
+        kD *= 1.0 - metallic;
+        
+        float NdotL = max(dot(N, L), 0.0);
+        Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+    }
+    
+    // Ambient
+    vec3 ambient = u_AmbientLight.color * u_AmbientLight.intensity * albedo * ao;
+    
+    // Emissive
+    vec3 emissive = u_Material_emissive;
+    
+    vec3 color = ambient + Lo + emissive;
+    
+    // HDR tonemapping
+    color = color / (color + vec3(1.0));
+    // Gamma correction
+    color = pow(color, vec3(1.0/2.2));
+    
+    FragColor = vec4(color, 1.0);
+}
+)";
+
+// Basic shader for simple rendering
+static const char* s_BasicVertexShader = R"(
+#version 410 core
+layout (location = 0) in vec3 a_Position;
+layout (location = 1) in vec3 a_Normal;
+layout (location = 2) in vec2 a_TexCoords;
+
+out vec3 v_Normal;
+out vec2 v_TexCoords;
+out vec3 v_WorldPos;
+
+uniform mat4 u_Model;
+uniform mat4 u_View;
+uniform mat4 u_Projection;
+uniform mat3 u_NormalMatrix;
+
+void main() {
+    v_WorldPos = vec3(u_Model * vec4(a_Position, 1.0));
+    v_Normal = u_NormalMatrix * a_Normal;
+    v_TexCoords = a_TexCoords;
+    gl_Position = u_Projection * u_View * vec4(v_WorldPos, 1.0);
+}
+)";
+
+static const char* s_BasicFragmentShader = R"(
+#version 410 core
+out vec4 FragColor;
+
+in vec3 v_Normal;
+in vec2 v_TexCoords;
+in vec3 v_WorldPos;
+
+uniform vec4 u_Color;
+uniform sampler2D u_Texture;
+uniform int u_HasTexture;
+uniform vec3 u_LightDir;
+uniform vec3 u_LightColor;
+
+void main() {
+    vec3 norm = normalize(v_Normal);
+    vec3 lightDir = normalize(-u_LightDir);
+    float diff = max(dot(norm, lightDir), 0.0);
+    vec3 diffuse = diff * u_LightColor;
+    vec3 ambient = vec3(0.2);
+    
+    vec4 texColor = u_Color;
+    if (u_HasTexture == 1) {
+        texColor = texture(u_Texture, v_TexCoords) * u_Color;
+    }
+    
+    vec3 result = (ambient + diffuse) * texColor.rgb;
+    FragColor = vec4(result, texColor.a);
+}
+)";
+
+// Line shader
+static const char* s_LineVertexShader = R"(
+#version 410 core
+layout (location = 0) in vec3 a_Position;
+layout (location = 1) in vec4 a_Color;
+
+out vec4 v_Color;
+
+uniform mat4 u_ViewProjection;
+
+void main() {
+    v_Color = a_Color;
+    gl_Position = u_ViewProjection * vec4(a_Position, 1.0);
+}
+)";
+
+static const char* s_LineFragmentShader = R"(
+#version 410 core
+out vec4 FragColor;
+
+in vec4 v_Color;
+
+void main() {
+    FragColor = v_Color;
+}
+)";
+
+void Renderer3D::Init() {
+    s_Data = new Renderer3DData();
+    
+    GINI_INFO("Initializing 3D Renderer");
+    
+    // Enable depth testing
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    
+    // Enable face culling
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
+    
+    // Enable blending
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    InitShaders();
+    InitPrimitives();
+}
+
+void Renderer3D::Shutdown() {
+    GINI_INFO("Shutting down 3D Renderer");
+    delete s_Data;
+    s_Data = nullptr;
+}
+
+void Renderer3D::InitShaders() {
+    s_Data->pbrShader = Shader::Create(s_PBRVertexShader, s_PBRFragmentShader);
+    s_Data->basicShader = Shader::Create(s_BasicVertexShader, s_BasicFragmentShader);
+    s_Data->lineShader = Shader::Create(s_LineVertexShader, s_LineFragmentShader);
+}
+
+void Renderer3D::InitPrimitives() {
+    s_Data->cubeMesh = Mesh::CreateCube(1.0f);
+    s_Data->sphereMesh = Mesh::CreateSphere(1.0f, 32, 16);
+    s_Data->planeMesh = Mesh::CreatePlane(1.0f, 1.0f);
+}
+
+void Renderer3D::BeginScene(const Camera3D& camera) {
+    BeginScene(camera.GetViewMatrix(), camera.GetProjectionMatrix(), camera.GetPosition());
+}
+
+void Renderer3D::BeginScene(const Mat4& viewMatrix, const Mat4& projectionMatrix, const Vec3& cameraPosition) {
+    s_Data->viewMatrix = viewMatrix;
+    s_Data->projectionMatrix = projectionMatrix;
+    s_Data->cameraPosition = cameraPosition;
+    s_Data->stats.Reset();
+}
+
+void Renderer3D::EndScene() {
+    // Flush any batched draws
+}
+
+void Renderer3D::SetClearColor(const Color& color) {
+    glClearColor(color.r, color.g, color.b, color.a);
+}
+
+void Renderer3D::Clear() {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+
+void Renderer3D::SetViewport(i32 x, i32 y, i32 width, i32 height) {
+    glViewport(x, y, width, height);
+}
+
+void Renderer3D::DrawMesh(const Ref<Mesh>& mesh, const Mat4& transform, const Color& color) {
+    if (!mesh) return;
+    
+    s_Data->basicShader->Bind();
+    s_Data->basicShader->SetMat4("u_Model", transform);
+    s_Data->basicShader->SetMat4("u_View", s_Data->viewMatrix);
+    s_Data->basicShader->SetMat4("u_Projection", s_Data->projectionMatrix);
+    s_Data->basicShader->SetMat3("u_NormalMatrix", glm::transpose(glm::inverse(Mat3(transform))));
+    s_Data->basicShader->SetFloat4("u_Color", Vec4(color.r, color.g, color.b, color.a));
+    s_Data->basicShader->SetInt("u_HasTexture", 0);
+    s_Data->basicShader->SetVec3("u_LightDir", Vec3(-0.2f, -1.0f, -0.3f));
+    s_Data->basicShader->SetVec3("u_LightColor", Vec3(1.0f));
+    
+    mesh->Draw();
+    
+    s_Data->stats.drawCalls++;
+    s_Data->stats.triangles += mesh->GetIndexCount() / 3;
+    s_Data->stats.vertices += mesh->GetVertexCount();
+    s_Data->stats.meshesDrawn++;
+}
+
+void Renderer3D::DrawMesh(const Ref<Mesh>& mesh, const Mat4& transform, const Ref<Texture2D>& texture) {
+    if (!mesh) return;
+    
+    s_Data->basicShader->Bind();
+    s_Data->basicShader->SetMat4("u_Model", transform);
+    s_Data->basicShader->SetMat4("u_View", s_Data->viewMatrix);
+    s_Data->basicShader->SetMat4("u_Projection", s_Data->projectionMatrix);
+    s_Data->basicShader->SetMat3("u_NormalMatrix", glm::transpose(glm::inverse(Mat3(transform))));
+    s_Data->basicShader->SetFloat4("u_Color", Vec4(1.0f));
+    s_Data->basicShader->SetVec3("u_LightDir", Vec3(-0.2f, -1.0f, -0.3f));
+    s_Data->basicShader->SetVec3("u_LightColor", Vec3(1.0f));
+    
+    if (texture) {
+        texture->Bind(0);
+        s_Data->basicShader->SetInt("u_Texture", 0);
+        s_Data->basicShader->SetInt("u_HasTexture", 1);
+    } else {
+        s_Data->basicShader->SetInt("u_HasTexture", 0);
+    }
+    
+    mesh->Draw();
+    
+    s_Data->stats.drawCalls++;
+    s_Data->stats.triangles += mesh->GetIndexCount() / 3;
+    s_Data->stats.vertices += mesh->GetVertexCount();
+    s_Data->stats.meshesDrawn++;
+}
+
+void Renderer3D::DrawMesh(const Ref<Mesh>& mesh, const Mat4& transform, const Material3D& material) {
+    if (!mesh) return;
+    
+    s_Data->pbrShader->Bind();
+    s_Data->pbrShader->SetMat4("u_Model", transform);
+    s_Data->pbrShader->SetMat4("u_View", s_Data->viewMatrix);
+    s_Data->pbrShader->SetMat4("u_Projection", s_Data->projectionMatrix);
+    s_Data->pbrShader->SetMat3("u_NormalMatrix", glm::transpose(glm::inverse(Mat3(transform))));
+    s_Data->pbrShader->SetVec3("u_CameraPos", s_Data->cameraPosition);
+    
+    // Material properties
+    s_Data->pbrShader->SetVec3("u_Material_albedo", material.albedo);
+    s_Data->pbrShader->SetFloat("u_Material_metallic", material.metallic);
+    s_Data->pbrShader->SetFloat("u_Material_roughness", material.roughness);
+    s_Data->pbrShader->SetFloat("u_Material_ao", material.ao);
+    s_Data->pbrShader->SetVec3("u_Material_emissive", material.emissive);
+    
+    // Upload lights
+    LightManager::Get().UploadToShader(s_Data->pbrShader.get());
+    
+    // Bind textures
+    u32 textureUnit = 0;
+    
+    if (material.albedoMap) {
+        material.albedoMap->Bind(textureUnit);
+        s_Data->pbrShader->SetInt("u_AlbedoMap", textureUnit++);
+        s_Data->pbrShader->SetInt("u_HasAlbedoMap", 1);
+    } else {
+        s_Data->pbrShader->SetInt("u_HasAlbedoMap", 0);
+    }
+    
+    if (material.normalMap) {
+        material.normalMap->Bind(textureUnit);
+        s_Data->pbrShader->SetInt("u_NormalMap", textureUnit++);
+        s_Data->pbrShader->SetInt("u_HasNormalMap", 1);
+    } else {
+        s_Data->pbrShader->SetInt("u_HasNormalMap", 0);
+    }
+    
+    if (material.metallicMap) {
+        material.metallicMap->Bind(textureUnit);
+        s_Data->pbrShader->SetInt("u_MetallicMap", textureUnit++);
+        s_Data->pbrShader->SetInt("u_HasMetallicMap", 1);
+    } else {
+        s_Data->pbrShader->SetInt("u_HasMetallicMap", 0);
+    }
+    
+    if (material.roughnessMap) {
+        material.roughnessMap->Bind(textureUnit);
+        s_Data->pbrShader->SetInt("u_RoughnessMap", textureUnit++);
+        s_Data->pbrShader->SetInt("u_HasRoughnessMap", 1);
+    } else {
+        s_Data->pbrShader->SetInt("u_HasRoughnessMap", 0);
+    }
+    
+    if (material.aoMap) {
+        material.aoMap->Bind(textureUnit);
+        s_Data->pbrShader->SetInt("u_AOMap", textureUnit++);
+        s_Data->pbrShader->SetInt("u_HasAOMap", 1);
+    } else {
+        s_Data->pbrShader->SetInt("u_HasAOMap", 0);
+    }
+    
+    mesh->Draw();
+    
+    s_Data->stats.drawCalls++;
+    s_Data->stats.triangles += mesh->GetIndexCount() / 3;
+    s_Data->stats.vertices += mesh->GetVertexCount();
+    s_Data->stats.meshesDrawn++;
+}
+
+void Renderer3D::DrawModel(const Ref<Model>& model, const Mat4& transform) {
+    if (!model) return;
+    
+    const auto& meshes = model->GetMeshes();
+    const auto& materials = model->GetMaterials();
+    const auto& materialIndices = model->GetMeshMaterialIndices();
+    
+    for (u32 i = 0; i < meshes.size(); i++) {
+        if (i < materialIndices.size() && materialIndices[i] >= 0 && 
+            materialIndices[i] < static_cast<i32>(materials.size())) {
+            DrawMesh(meshes[i], transform, materials[materialIndices[i]]);
+        } else {
+            Material3D defaultMat;
+            DrawMesh(meshes[i], transform, defaultMat);
+        }
+    }
+}
+
+void Renderer3D::DrawModel(const Ref<Model>& model, const Vec3& position, const Vec3& rotation, const Vec3& scale) {
+    Mat4 transform = glm::translate(Mat4(1.0f), position);
+    transform = glm::rotate(transform, glm::radians(rotation.x), Vec3(1, 0, 0));
+    transform = glm::rotate(transform, glm::radians(rotation.y), Vec3(0, 1, 0));
+    transform = glm::rotate(transform, glm::radians(rotation.z), Vec3(0, 0, 1));
+    transform = glm::scale(transform, scale);
+    
+    DrawModel(model, transform);
+}
+
+void Renderer3D::DrawCube(const Vec3& position, const Vec3& size, const Color& color) {
+    Mat4 transform = glm::translate(Mat4(1.0f), position);
+    transform = glm::scale(transform, size);
+    DrawMesh(s_Data->cubeMesh, transform, color);
+}
+
+void Renderer3D::DrawCube(const Vec3& position, const Vec3& size, const Ref<Texture2D>& texture) {
+    Mat4 transform = glm::translate(Mat4(1.0f), position);
+    transform = glm::scale(transform, size);
+    DrawMesh(s_Data->cubeMesh, transform, texture);
+}
+
+void Renderer3D::DrawSphere(const Vec3& position, f32 radius, const Color& color) {
+    Mat4 transform = glm::translate(Mat4(1.0f), position);
+    transform = glm::scale(transform, Vec3(radius));
+    DrawMesh(s_Data->sphereMesh, transform, color);
+}
+
+void Renderer3D::DrawPlane(const Vec3& position, const Vec2& size, const Color& color) {
+    Mat4 transform = glm::translate(Mat4(1.0f), position);
+    transform = glm::scale(transform, Vec3(size.x, 1.0f, size.y));
+    DrawMesh(s_Data->planeMesh, transform, color);
+}
+
+Ref<Shader> Renderer3D::GetPBRShader() {
+    return s_Data->pbrShader;
+}
+
+Ref<Shader> Renderer3D::GetBasicShader() {
+    return s_Data->basicShader;
+}
+
+Ref<Shader> Renderer3D::GetSkyboxShader() {
+    return s_Data->skyboxShader;
+}
+
+const Renderer3DStats& Renderer3D::GetStats() {
+    return s_Data->stats;
+}
+
+void Renderer3D::ResetStats() {
+    s_Data->stats.Reset();
+}
+
+void Renderer3D::SetWireframeMode(bool enabled) {
+    s_Data->wireframeMode = enabled;
+    glPolygonMode(GL_FRONT_AND_BACK, enabled ? GL_LINE : GL_FILL);
+}
+
+void Renderer3D::SetDepthTest(bool enabled) {
+    if (enabled) {
+        glEnable(GL_DEPTH_TEST);
+    } else {
+        glDisable(GL_DEPTH_TEST);
+    }
+}
+
+void Renderer3D::SetCullFace(bool enabled) {
+    if (enabled) {
+        glEnable(GL_CULL_FACE);
+    } else {
+        glDisable(GL_CULL_FACE);
+    }
+}
+
+void Renderer3D::DrawSkybox(const Ref<class TextureCube>& cubemap) {
+    // TODO: Implement skybox rendering
+}
+
+void Renderer3D::DrawLine(const Vec3& start, const Vec3& end, const Color& color) {
+    // TODO: Implement line rendering with batching
+}
+
+void Renderer3D::DrawWireCube(const Vec3& position, const Vec3& size, const Color& color) {
+    bool wasWireframe = s_Data->wireframeMode;
+    SetWireframeMode(true);
+    DrawCube(position, size, color);
+    SetWireframeMode(wasWireframe);
+}
+
+void Renderer3D::DrawWireSphere(const Vec3& position, f32 radius, const Color& color) {
+    bool wasWireframe = s_Data->wireframeMode;
+    SetWireframeMode(true);
+    DrawSphere(position, radius, color);
+    SetWireframeMode(wasWireframe);
+}
+
+void Renderer3D::DrawGrid(f32 size, u32 divisions, const Color& color) {
+    // TODO: Implement grid rendering
+}
+
+} // namespace Gini

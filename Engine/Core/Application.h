@@ -48,6 +48,7 @@ private:
     bool OnWindowResize(WindowResizeEvent& event);
     
     static Application* s_Instance;
+
 };
 
 // Define this in your game

@@ -34,10 +34,16 @@ public:
   static void ShowAssetBrowser();
   static void ShowConsole();
   static void ShowProfiler();
+  static void SetFontSize(float size);
+  static void ReloadFonts(float size);
+
 
 private:
   static bool s_Initialized;
   static bool s_BlockEvents;
+public:
+  static float m_fontSize;
+  static float m_pendingFontSize;
 };
 
 // Helper macros for quick debug UI

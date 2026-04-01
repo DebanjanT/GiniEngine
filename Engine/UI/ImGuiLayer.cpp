@@ -12,38 +12,89 @@
 
 #include <cstring>
 
-namespace Gini {
 
+#ifdef _WIN32
+const char* fontPath = "C:/Windows/Fonts/Arial.ttf";
+#elif __APPLE__
+const char* fontPath = "/System/Library/Fonts/SFNS.ttf"; // fallback
+#else
+const char* fontPath = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
+#endif
+
+namespace Gini {
+float ImGuiLayer::m_fontSize = 16.0f;
+float ImGuiLayer::m_pendingFontSize = -1.0f;
 bool ImGuiLayer::s_Initialized = false;
 bool ImGuiLayer::s_BlockEvents = true;
 
 void ImGuiLayer::Init() {
-  if (s_Initialized)
-    return;
+    if (s_Initialized)
+        return;
 
-  IMGUI_CHECKVERSION();
-  ImGui::CreateContext();
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
 
-  ImGuiIO &io = ImGui::GetIO();
-  io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
-  // Set default font size
-  io.FontGlobalScale = 1.0f;
 
-  SetDarkTheme();
+    ImFont* regular = io.Fonts->AddFontFromFileTTF(
+        "assets/fonts/SpaceGrotesk-Regular.ttf", m_fontSize
+    );
 
-  // Get GLFW window from current context
-  GLFWwindow *window = glfwGetCurrentContext();
-  if (!window) {
-    GINI_ERROR("ImGuiLayer::Init - No GLFW context available!");
-    return;
-  }
+    ImFont* semibold = io.Fonts->AddFontFromFileTTF(
+        "assets/fonts/SpaceGrotesk-SemiBold.ttf", m_fontSize
+    );
 
-  ImGui_ImplGlfw_InitForOpenGL(window, true);
-  ImGui_ImplOpenGL3_Init("#version 410");
+    if (!regular) {
+        GINI_ERROR("Regular Font load failed!");
+        regular = io.Fonts->AddFontDefault();
+    }
+    GINI_INFO("Font Loaded Correctly");
+    io.FontDefault = regular;
+    io.FontGlobalScale = 1.0f;
 
-  s_Initialized = true;
-  GINI_INFO("ImGui initialized successfully");
+    SetDarkTheme();
+
+    GLFWwindow* window = glfwGetCurrentContext();
+    if (!window) {
+        GINI_ERROR("ImGuiLayer::Init - No GLFW context available!");
+        return;
+    }
+
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 410");
+
+    s_Initialized = true;
+    GINI_INFO("ImGui initialized successfully");
+}
+
+void ImGuiLayer::ReloadFonts(float size) {
+    ImGuiIO& io = ImGui::GetIO();
+
+    io.Fonts->Clear();
+
+    ImFont* regular = io.Fonts->AddFontFromFileTTF(
+        "assets/fonts/SpaceGrotesk-Regular.ttf", size
+    );
+
+    ImFont* semibold = io.Fonts->AddFontFromFileTTF(
+        "assets/fonts/SpaceGrotesk-SemiBold.ttf", size
+    );
+
+    if (!regular) {
+        GINI_ERROR("Font load failed!");
+        regular = io.Fonts->AddFontDefault();
+    }
+    GINI_INFO("Font Loaded Correctly");
+    io.FontDefault = regular;
+
+    ImGui_ImplOpenGL3_DestroyFontsTexture();
+    ImGui_ImplOpenGL3_CreateFontsTexture();
+}
+
+void ImGuiLayer::SetFontSize(float size) {
+    m_pendingFontSize = size;
 }
 
 void ImGuiLayer::Shutdown() {
@@ -61,7 +112,26 @@ void ImGuiLayer::Shutdown() {
 void ImGuiLayer::Begin() {
   if (!s_Initialized)
     return;
+  if (m_pendingFontSize > 0.0f) {
 
+      m_fontSize = m_pendingFontSize;
+      m_pendingFontSize = -1.0f;
+
+      ImGuiIO& io = ImGui::GetIO();
+      io.Fonts->Clear();
+
+      ImFont* font = io.Fonts->AddFontFromFileTTF(
+          "assets/fonts/SpaceGrotesk-Regular.ttf", m_fontSize
+      );
+
+      if (!font)
+          font = io.Fonts->AddFontDefault();
+
+      io.FontDefault = font;
+
+      ImGui_ImplOpenGL3_DestroyFontsTexture();
+      ImGui_ImplOpenGL3_CreateFontsTexture();
+  }
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplGlfw_NewFrame();
   ImGui::NewFrame();
@@ -100,73 +170,81 @@ void ImGuiLayer::OnEvent(Event &event) {
 }
 
 void ImGuiLayer::SetDarkTheme() {
-  ImGui::StyleColorsDark();
+    ImGui::StyleColorsDark();
 
-  auto &colors = ImGui::GetStyle().Colors;
+    auto& colors = ImGui::GetStyle().Colors;
 
-  // Window
-  colors[ImGuiCol_WindowBg] = ImVec4(0.1f, 0.1f, 0.13f, 1.0f);
-  colors[ImGuiCol_MenuBarBg] = ImVec4(0.16f, 0.16f, 0.21f, 1.0f);
+    // Base (bluish dark)
+    colors[ImGuiCol_WindowBg] = ImVec4(0.07f, 0.08f, 0.09f, 1.0f);
+    colors[ImGuiCol_ChildBg] = ImVec4(0.09f, 0.10f, 0.11f, 1.0f);
+    colors[ImGuiCol_PopupBg] = ImVec4(0.10f, 0.11f, 0.12f, 1.0f);
+    colors[ImGuiCol_MenuBarBg] = ImVec4(0.10f, 0.12f, 0.15f, 1.00f);
 
-  // Border
-  colors[ImGuiCol_Border] = ImVec4(0.44f, 0.37f, 0.61f, 0.29f);
-  colors[ImGuiCol_BorderShadow] = ImVec4(0.0f, 0.0f, 0.0f, 0.24f);
+    // Borders (very subtle)
+    colors[ImGuiCol_Border] = ImVec4(0.20f, 0.25f, 0.30f, 0.30f);
+    colors[ImGuiCol_BorderShadow] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
 
-  // Text
-  colors[ImGuiCol_Text] = ImVec4(1.0f, 1.0f, 1.0f, 1.0f);
-  colors[ImGuiCol_TextDisabled] = ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
+    // Text
+    colors[ImGuiCol_Text] = ImVec4(0.85f, 0.88f, 0.92f, 1.00f);
+    colors[ImGuiCol_TextDisabled] = ImVec4(0.45f, 0.50f, 0.55f, 1.00f);
 
-  // Headers
-  colors[ImGuiCol_Header] = ImVec4(0.13f, 0.75f, 0.55f, 0.40f);
-  colors[ImGuiCol_HeaderHovered] = ImVec4(0.13f, 0.75f, 0.75f, 0.60f);
-  colors[ImGuiCol_HeaderActive] = ImVec4(0.13f, 0.75f, 0.55f, 0.80f);
+    // Primary accent (Frostbite blue)
+    ImVec4 accent = ImVec4(0.20f, 0.55f, 0.85f, 1.00f);
+    ImVec4 accentHover = ImVec4(0.30f, 0.65f, 0.95f, 1.00f);
+    ImVec4 accentActive = ImVec4(0.15f, 0.45f, 0.75f, 1.00f);
 
-  // Buttons
-  colors[ImGuiCol_Button] = ImVec4(0.13f, 0.75f, 0.55f, 0.40f);
-  colors[ImGuiCol_ButtonHovered] = ImVec4(0.13f, 0.75f, 0.75f, 0.60f);
-  colors[ImGuiCol_ButtonActive] = ImVec4(0.13f, 0.75f, 0.55f, 0.80f);
+    // Headers
+    colors[ImGuiCol_Header] = ImVec4(accent.x, accent.y, accent.z, 0.35f);
+    colors[ImGuiCol_HeaderHovered] = ImVec4(accentHover.x, accentHover.y, accentHover.z, 0.55f);
+    colors[ImGuiCol_HeaderActive] = ImVec4(accentActive.x, accentActive.y, accentActive.z, 0.75f);
 
-  // Frame
-  colors[ImGuiCol_FrameBg] = ImVec4(0.13f, 0.13f, 0.17f, 1.0f);
-  colors[ImGuiCol_FrameBgHovered] = ImVec4(0.19f, 0.19f, 0.25f, 1.0f);
-  colors[ImGuiCol_FrameBgActive] = ImVec4(0.16f, 0.16f, 0.21f, 1.0f);
+    // Buttons
+    colors[ImGuiCol_Button] = ImVec4(accent.x, accent.y, accent.z, 0.35f);
+    colors[ImGuiCol_ButtonHovered] = ImVec4(accentHover.x, accentHover.y, accentHover.z, 0.60f);
+    colors[ImGuiCol_ButtonActive] = ImVec4(accentActive.x, accentActive.y, accentActive.z, 0.80f);
 
-  // Tabs
-  colors[ImGuiCol_Tab] = ImVec4(0.16f, 0.16f, 0.21f, 1.0f);
-  colors[ImGuiCol_TabHovered] = ImVec4(0.24f, 0.24f, 0.32f, 1.0f);
-  colors[ImGuiCol_TabActive] = ImVec4(0.2f, 0.2f, 0.28f, 1.0f);
-  colors[ImGuiCol_TabUnfocused] = ImVec4(0.16f, 0.16f, 0.21f, 1.0f);
-  colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.16f, 0.16f, 0.21f, 1.0f);
+    // Frame
+    colors[ImGuiCol_FrameBg] = ImVec4(0.10f, 0.13f, 0.16f, 1.00f);
+    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.14f, 0.18f, 0.22f, 1.00f);
+    colors[ImGuiCol_FrameBgActive] = ImVec4(0.12f, 0.16f, 0.20f, 1.00f);
 
-  // Title
-  colors[ImGuiCol_TitleBg] = ImVec4(0.16f, 0.16f, 0.21f, 1.0f);
-  colors[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.16f, 0.21f, 1.0f);
-  colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.16f, 0.16f, 0.21f, 1.0f);
+    // Tabs (flat, subtle)
+    colors[ImGuiCol_Tab] = ImVec4(0.08f, 0.09f, 0.10f, 1.0f);
+    colors[ImGuiCol_TabActive] = ImVec4(0.12f, 0.14f, 0.16f, 1.0f);
+    colors[ImGuiCol_TabHovered] = ImVec4(0.18f, 0.22f, 0.27f, 1.00f);
+    colors[ImGuiCol_TabUnfocused] = ImVec4(0.08f, 0.10f, 0.13f, 1.00f);
+    colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.10f, 0.12f, 0.15f, 1.00f);
 
-  // Scrollbar
-  colors[ImGuiCol_ScrollbarBg] = ImVec4(0.1f, 0.1f, 0.13f, 1.0f);
-  colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.16f, 0.16f, 0.21f, 1.0f);
-  colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.19f, 0.19f, 0.25f, 1.0f);
-  colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.24f, 0.24f, 0.32f, 1.0f);
+    // Title
+    colors[ImGuiCol_TitleBg] = ImVec4(0.08f, 0.10f, 0.13f, 1.00f);
+    colors[ImGuiCol_TitleBgActive] = ImVec4(0.10f, 0.12f, 0.15f, 1.00f);
+    colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.08f, 0.10f, 0.13f, 1.00f);
 
-  // Separator
-  colors[ImGuiCol_Separator] = ImVec4(0.44f, 0.37f, 0.61f, 0.29f);
-  colors[ImGuiCol_SeparatorHovered] = ImVec4(0.74f, 0.58f, 0.98f, 0.29f);
-  colors[ImGuiCol_SeparatorActive] = ImVec4(0.84f, 0.58f, 1.0f, 0.29f);
+    // Scrollbar
+    colors[ImGuiCol_ScrollbarBg] = ImVec4(0.06f, 0.08f, 0.10f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.12f, 0.15f, 0.18f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.18f, 0.22f, 0.27f, 1.00f);
+    colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.22f, 0.27f, 0.32f, 1.00f);
 
-  // Resize
-  colors[ImGuiCol_ResizeGrip] = ImVec4(0.44f, 0.37f, 0.61f, 0.29f);
-  colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.74f, 0.58f, 0.98f, 0.29f);
-  colors[ImGuiCol_ResizeGripActive] = ImVec4(0.84f, 0.58f, 1.0f, 0.29f);
+    // Separator (very subtle blue hint)
+    colors[ImGuiCol_Separator] = ImVec4(1, 1, 1, 0.06f);
+    colors[ImGuiCol_SeparatorHovered] = ImVec4(0.30f, 0.50f, 0.70f, 0.50f);
+    colors[ImGuiCol_SeparatorActive] = ImVec4(0.35f, 0.60f, 0.85f, 0.70f);
 
-  auto &style = ImGui::GetStyle();
-  style.TabRounding = 4;
-  style.ScrollbarRounding = 9;
-  style.WindowRounding = 7;
-  style.GrabRounding = 3;
-  style.FrameRounding = 3;
-  style.PopupRounding = 4;
-  style.ChildRounding = 4;
+    // Resize grip
+    colors[ImGuiCol_ResizeGrip] = ImVec4(0.20f, 0.30f, 0.40f, 0.30f);
+    colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.30f, 0.50f, 0.70f, 0.60f);
+    colors[ImGuiCol_ResizeGripActive] = ImVec4(0.35f, 0.60f, 0.85f, 0.80f);
+
+    // Rounding (Frostbite is sharper)
+    auto& style = ImGui::GetStyle();
+    style.WindowRounding = 2;
+    style.FrameRounding = 1;
+    style.PopupRounding = 3;
+    style.ScrollbarRounding = 6;
+    style.GrabRounding = 2;
+    style.TabRounding = 2;
+    style.ChildRounding = 3;
 }
 
 void ImGuiLayer::SetLightTheme() { ImGui::StyleColorsLight(); }

@@ -1,3 +1,8 @@
+/*
+   This is an application that is to test the game engine functions
+   This demo doesn't represent the full funtionality of the game engine
+*/
+
 #include "Gini.h"
 #include "Renderer/Camera3D.h"
 #include "Renderer/Light.h"
@@ -58,13 +63,13 @@ public:
     PointLight redLight;
     redLight.position = Vec3(-5.0f, 3.0f, 0.0f);
     redLight.color = Vec3(1.0f, 0.2f, 0.2f);
-    redLight.intensity = 5.0f;
+    redLight.intensity = 1.0f;
     lights.AddPointLight(redLight);
 
     PointLight blueLight;
     blueLight.position = Vec3(5.0f, 3.0f, 0.0f);
     blueLight.color = Vec3(0.2f, 0.2f, 1.0f);
-    blueLight.intensity = 5.0f;
+    blueLight.intensity = 1.0f;
     lights.AddPointLight(blueLight);
 
     // Create primitive meshes
@@ -74,12 +79,12 @@ public:
 
     // Load terrain model (use path relative to project root, not build dir)
     m_TerrainModel =
-        Model::Create("../Samples/Demo3D/model/terrian/terrian.obj");
+        Model::Create("./model/terrian/terrian.obj");
     if (m_TerrainModel) {
       GINI_INFO("Terrain model loaded successfully!");
       // Load terrain texture manually and apply to material
       m_TerrainTexture =
-          Texture2D::Create("../Samples/Demo3D/model/terrian/terrian.png");
+          Texture2D::Create("./model/terrian/terrian.png");
     } else {
       GINI_ERROR("Failed to load terrain model!");
     }
@@ -122,9 +127,9 @@ public:
     // Draw terrain model instead of floor plane
     if (m_TerrainModel) {
       Mat4 terrainTransform =
-          glm::translate(Mat4(1.0f), Vec3(0.0f, -5.0f, 0.0f));
+          glm::translate(Mat4(1.0f), Vec3(0.0f, -2.0f, 0.0f));
       terrainTransform =
-          glm::scale(terrainTransform, Vec3(0.1f)); // Scale down if needed
+          glm::scale(terrainTransform, Vec3(0.2f)); // Scale down if needed
 
       // Create terrain material with texture
       Material3D terrainMat;

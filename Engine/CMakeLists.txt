@@ -54,6 +54,9 @@ set(ENGINE_SOURCES
 
     # Platform
     Platform/Steam.cpp
+
+    # Scene
+    Scene/Scene.cpp
 )
 
 set(ENGINE_HEADERS
@@ -115,6 +118,9 @@ set(ENGINE_HEADERS
 
     # Platform
     Platform/Steam.h
+
+    # Scene
+    Scene/Scene.h
 )
 
 add_library(GiniEngine STATIC ${ENGINE_SOURCES} ${ENGINE_HEADERS})

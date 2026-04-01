@@ -119,7 +119,7 @@ void SpriteBatch::Flush() {
 
 f32 SpriteBatch::GetTextureIndex(const Ref<Texture2D>& texture) {
     for (u32 i = 0; i < m_TextureSlotIndex; i++) {
-        if (*m_TextureSlots[i] == *texture) {
+        if (m_TextureSlots[i].get() == texture.get()) {
             return static_cast<f32>(i);
         }
     }

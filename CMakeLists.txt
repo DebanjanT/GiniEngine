@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.20)
+﻿cmake_minimum_required(VERSION 3.20)
 
 # Allow older CMake policies for dependencies
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
@@ -11,6 +11,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Build options
 option(GINI_BUILD_EDITOR "Build the Gini Editor" ON)
+option(GINI_BUILD_RUNTIME "Build the Gini Runtime" ON)
 option(GINI_BUILD_SAMPLES "Build sample games" ON)
 option(GINI_ENABLE_STEAM "Enable Steam SDK integration" OFF)
 
@@ -136,6 +137,11 @@ add_subdirectory(Engine)
 # Editor
 if(GINI_BUILD_EDITOR)
     add_subdirectory(Editor)
+endif()
+
+# Runtime
+if(GINI_BUILD_RUNTIME)
+    add_subdirectory(Runtime)
 endif()
 
 # Sample games

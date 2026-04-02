@@ -5,9 +5,11 @@
 #include "Panels/PropertiesPanel.h"
 #include "Panels/SceneHierarchyPanel.h"
 #include "Panels/StatsPanel.h"
+#include "Panels/TerrainPanel.h"
 #include "Renderer/Camera3D.h"
 #include "Renderer/Framebuffer.h"
 #include "Scene/Scene.h"
+#include "Terrain/Terrain.h"
 
 namespace Gini {
 
@@ -57,6 +59,10 @@ private:
   PropertiesPanel m_PropertiesPanel;
   StatsPanel m_StatsPanel;
   ConsolePanel m_ConsolePanel;
+  TerrainPanel m_TerrainPanel;
+
+  // Terrain
+  Ref<Terrain> m_Terrain;
 
   // Editor state
   Entity m_SelectedEntity = NullEntity;

@@ -57,6 +57,11 @@ void EditorApp::OnInit() {
   });
 
   m_PropertiesPanel.SetScene(m_ActiveScene);
+
+  // Create default terrain
+  m_Terrain = Terrain::Create(128, 128, 50.0f);
+  m_Terrain->GenerateFromNoise(0.03f, 50.0f, 4);
+  m_TerrainPanel.SetTerrain(m_Terrain);
 }
 
 void EditorApp::OnShutdown() {
@@ -106,8 +111,13 @@ void EditorApp::OnRender() {
   // Render scene
   Renderer3D::BeginScene(*m_EditorCamera);
 
+  // Render terrain if exists
+  if (m_Terrain) {
+    m_Terrain->Render(*m_EditorCamera);
+  }
+
   if (m_ActiveScene) {
-    // Draw grid
+    // Draw grid (only if no terrain)
     for (int i = -10; i <= 10; i++) {
       Color gridColor =
           (i == 0) ? Color(0.5f, 0.5f, 0.5f) : Color(0.3f, 0.3f, 0.3f);
@@ -213,6 +223,7 @@ void EditorApp::OnRender() {
   m_PropertiesPanel.OnImGuiRender();
   m_StatsPanel.OnImGuiRender();
   m_ConsolePanel.OnImGuiRender();
+  m_TerrainPanel.OnImGuiRender();
 
   if (m_ShowDemoWindow) {
     ImGui::ShowDemoWindow(&m_ShowDemoWindow);

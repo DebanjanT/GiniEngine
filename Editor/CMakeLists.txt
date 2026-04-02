@@ -6,6 +6,7 @@ set(EDITOR_SOURCES
     Panels/PropertiesPanel.cpp
     Panels/StatsPanel.cpp
     Panels/ConsolePanel.cpp
+    Panels/TerrainPanel.cpp
 )
 
 set(EDITOR_HEADERS
@@ -15,6 +16,7 @@ set(EDITOR_HEADERS
     Panels/PropertiesPanel.h
     Panels/StatsPanel.h
     Panels/ConsolePanel.h
+    Panels/TerrainPanel.h
 )
 
 add_executable(GiniEditor ${EDITOR_SOURCES} ${EDITOR_HEADERS})

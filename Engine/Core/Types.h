@@ -43,15 +43,25 @@ constexpr Ref<T> CreateRef(Args &&...args) {
   return std::make_shared<T>(std::forward<Args>(args)...);
 }
 
-// Math types
-using Vec2 = glm::vec2;
-using Vec3 = glm::vec3;
-using Vec4 = glm::vec4;
-using Mat3 = glm::mat3;
-using Mat4 = glm::mat4;
-using IVec2 = glm::ivec2;
-using IVec3 = glm::ivec3;
-using IVec4 = glm::ivec4;
+// Math types (prefixed with G to avoid conflicts with ImGui types)
+using GVec2 = glm::vec2;
+using GVec3 = glm::vec3;
+using GVec4 = glm::vec4;
+using GMat3 = glm::mat3;
+using GMat4 = glm::mat4;
+using GIVec2 = glm::ivec2;
+using GIVec3 = glm::ivec3;
+using GIVec4 = glm::ivec4;
+
+// Backwards compatibility aliases (deprecated - use G-prefixed versions)
+using Vec2 = GVec2;
+using Vec3 = GVec3;
+using Vec4 = GVec4;
+using Mat3 = GMat3;
+using Mat4 = GMat4;
+using IVec2 = GIVec2;
+using IVec3 = GIVec3;
+using IVec4 = GIVec4;
 
 // Color
 struct Color {
@@ -71,7 +81,7 @@ struct Color {
   static Color Yellow() { return {1.0f, 1.0f, 0.0f, 1.0f}; }
   static Color Transparent() { return {0.0f, 0.0f, 0.0f, 0.0f}; }
 
-  Vec4 ToVec4() const { return {r, g, b, a}; }
+  GVec4 ToVec4() const { return {r, g, b, a}; }
 };
 
 // Rectangle

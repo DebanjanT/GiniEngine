@@ -41,6 +41,9 @@ set(ENGINE_SOURCES
     # UI
     UI/ImGuiLayer.cpp
 
+    # ImGui extensions
+    ImGui/ImGuizmo.cpp
+
     # Assets
     Assets/AssetManager.cpp
 

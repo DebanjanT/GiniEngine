@@ -40,5 +40,3 @@ add_custom_command(TARGET GiniEditor POST_BUILD
     ${CMAKE_CURRENT_SOURCE_DIR}/assets
     $<TARGET_FILE_DIR:GiniEditor>/assets
 )
-
-

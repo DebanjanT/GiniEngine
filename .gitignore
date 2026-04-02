@@ -5,6 +5,7 @@
 # ===========================================
 # Build directories
 # ===========================================
+reference
 build/
 build_*/
 out/
@@ -16,6 +17,7 @@ Release/
 RelWithDebInfo/
 MinSizeRel/
 .cache
+
 # ===========================================
 # CMake generated files
 # ===========================================

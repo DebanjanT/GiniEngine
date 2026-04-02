@@ -1,12 +1,14 @@
 #include "EditorApp.h"
+#include "ImGui/ImGuizmo.h"
 #include "Renderer/Renderer3D.h"
 #include "UI/ImGuiLayer.h"
 
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
-#include <imgui_internal.h>
 #include <imgui_impl_opengl3.h>
-
+#include <imgui_internal.h>
+#include <limits>
 
 namespace Gini {
 
@@ -107,25 +109,91 @@ void EditorApp::OnRender() {
   if (m_ActiveScene) {
     // Draw grid
     for (int i = -10; i <= 10; i++) {
-      Renderer3D::DrawLine(Vec3(i, 0, -10), Vec3(i, 0, 10),
-                           Color(0.3f, 0.3f, 0.3f));
-      Renderer3D::DrawLine(Vec3(-10, 0, i), Vec3(10, 0, i),
-                           Color(0.3f, 0.3f, 0.3f));
+      Color gridColor =
+          (i == 0) ? Color(0.5f, 0.5f, 0.5f) : Color(0.3f, 0.3f, 0.3f);
+      Renderer3D::DrawLine(Vec3(i, 0, -10), Vec3(i, 0, 10), gridColor);
+      Renderer3D::DrawLine(Vec3(-10, 0, i), Vec3(10, 0, i), gridColor);
     }
+    // Draw axis lines
+    Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(5, 0, 0),
+                         Color(1.0f, 0.2f, 0.2f)); // X red
+    Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(0, 5, 0),
+                         Color(0.2f, 1.0f, 0.2f)); // Y green
+    Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(0, 0, 5),
+                         Color(0.2f, 0.2f, 1.0f)); // Z blue
 
-    // Draw entities with transforms
+    // Draw entities with transforms as cubes - keep original colors always
     auto &world = m_ActiveScene->GetWorld();
     auto view = world.GetRegistry().view<TransformComponent>();
+    int entityIndex = 0;
     for (auto entity : view) {
       auto &transform = view.get<TransformComponent>(entity);
 
-      // Draw a small cube for each entity
-      Mat4 modelMatrix = transform.GetTransform();
-
-      // Highlight selected entity
-      if (entity == m_SelectedEntity) {
-        // Draw selection outline
+      // Fixed colors for each cube (based on creation order)
+      Color cubeColor;
+      switch (entityIndex % 3) {
+      case 0:
+        cubeColor = Color(0.8f, 0.3f, 0.3f);
+        break; // Red
+      case 1:
+        cubeColor = Color(0.3f, 0.8f, 0.3f);
+        break; // Green
+      case 2:
+        cubeColor = Color(0.3f, 0.3f, 0.8f);
+        break; // Blue
       }
+
+      // Draw cube at entity position
+      Renderer3D::DrawCube(transform.position, transform.scale, cubeColor);
+
+      // Draw selection wireframe for selected entity (yellow outline only)
+      if (entity == m_SelectedEntity) {
+        Vec3 halfSize =
+            transform.scale * 0.55f; // Slightly larger for visibility
+        Vec3 p = transform.position;
+        Color wireColor(1.0f, 0.8f, 0.0f);
+        // Bottom face
+        Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, -halfSize.z),
+                             p + Vec3(halfSize.x, -halfSize.y, -halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, -halfSize.z),
+                             p + Vec3(halfSize.x, -halfSize.y, halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, halfSize.z),
+                             p + Vec3(-halfSize.x, -halfSize.y, halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, halfSize.z),
+                             p + Vec3(-halfSize.x, -halfSize.y, -halfSize.z),
+                             wireColor);
+        // Top face
+        Renderer3D::DrawLine(p + Vec3(-halfSize.x, halfSize.y, -halfSize.z),
+                             p + Vec3(halfSize.x, halfSize.y, -halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(halfSize.x, halfSize.y, -halfSize.z),
+                             p + Vec3(halfSize.x, halfSize.y, halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(halfSize.x, halfSize.y, halfSize.z),
+                             p + Vec3(-halfSize.x, halfSize.y, halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(-halfSize.x, halfSize.y, halfSize.z),
+                             p + Vec3(-halfSize.x, halfSize.y, -halfSize.z),
+                             wireColor);
+        // Vertical edges
+        Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, -halfSize.z),
+                             p + Vec3(-halfSize.x, halfSize.y, -halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, -halfSize.z),
+                             p + Vec3(halfSize.x, halfSize.y, -halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, halfSize.z),
+                             p + Vec3(halfSize.x, halfSize.y, halfSize.z),
+                             wireColor);
+        Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, halfSize.z),
+                             p + Vec3(-halfSize.x, halfSize.y, halfSize.z),
+                             wireColor);
+      }
+
+      entityIndex++;
     }
   }
 
@@ -166,6 +234,21 @@ void EditorApp::OnEvent(Event &event) {
     m_CameraController->OnScroll(e.GetYOffset());
   }
 
+  // Mouse click for entity selection
+  if (event.GetType() == EventType::MouseButtonPressed && m_ViewportHovered) {
+    auto &e = static_cast<MouseButtonPressedEvent &>(event);
+    if (e.GetButton() == static_cast<i32>(MouseButton::Left)) {
+      // Don't select if using gizmo or camera controls
+      if (!Input::Get().IsKeyDown(Key::LeftAlt) && !ImGuizmo::IsOver()) {
+        Vec2 mousePos = Input::Get().GetMousePosition();
+        Entity picked = PickEntity(mousePos);
+        m_SelectedEntity = picked;
+        m_PropertiesPanel.SetSelectedEntity(picked);
+        m_HierarchyPanel.SetSelectedEntity(picked);
+      }
+    }
+  }
+
   if (event.GetType() == EventType::KeyPressed) {
     auto &e = static_cast<KeyPressedEvent &>(event);
 
@@ -189,16 +272,46 @@ void EditorApp::OnEvent(Event &event) {
       m_ActiveScene->DestroyEntity(m_SelectedEntity);
       m_SelectedEntity = NullEntity;
     }
+
+    // Gizmo shortcuts (only when not typing in text field)
+    if (!ImGui::GetIO().WantTextInput) {
+      i32 keyCode = e.GetKeyCode();
+      if (keyCode == static_cast<i32>(Key::W))
+        m_GizmoOperation = GizmoOperation::Translate;
+      else if (keyCode == static_cast<i32>(Key::E))
+        m_GizmoOperation = GizmoOperation::Rotate;
+      else if (keyCode == static_cast<i32>(Key::R))
+        m_GizmoOperation = GizmoOperation::Scale;
+
+      // Toggle snap with Ctrl
+      if (keyCode == static_cast<i32>(Key::LeftControl) ||
+          keyCode == static_cast<i32>(Key::RightControl))
+        m_GizmoUsingSnap = true;
+    }
+  }
+
+  // Release snap when Ctrl is released
+  if (event.GetType() == EventType::KeyReleased) {
+    auto &e = static_cast<KeyReleasedEvent &>(event);
+    i32 keyCode = e.GetKeyCode();
+    if (keyCode == static_cast<i32>(Key::LeftControl) ||
+        keyCode == static_cast<i32>(Key::RightControl))
+      m_GizmoUsingSnap = false;
   }
 }
 
 void EditorApp::SetupDockspace() {
-  // Simple fullscreen window setup (docking requires ImGui docking branch)
-  ImGuiWindowFlags windowFlags = ImGuiWindowFlags_MenuBar;
+  static bool dockspaceOpen = true;
+  static bool firstTime = true;
+  static ImGuiDockNodeFlags dockspaceFlags = ImGuiDockNodeFlags_None;
+
+  ImGuiWindowFlags windowFlags =
+      ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
 
   ImGuiViewport *viewport = ImGui::GetMainViewport();
-  ImGui::SetNextWindowPos(viewport->Pos);
-  ImGui::SetNextWindowSize(viewport->Size);
+  ImGui::SetNextWindowPos(viewport->WorkPos);
+  ImGui::SetNextWindowSize(viewport->WorkSize);
+  ImGui::SetNextWindowViewport(viewport->ID);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
   ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
   windowFlags |= ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse |
@@ -207,9 +320,45 @@ void EditorApp::SetupDockspace() {
       ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-  static bool open = true;
-  ImGui::Begin("MainWindow", &open, windowFlags);
+  ImGui::Begin("DockSpace Demo", &dockspaceOpen, windowFlags);
   ImGui::PopStyleVar(3);
+
+  // DockSpace
+  ImGuiIO &io = ImGui::GetIO();
+  if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable) {
+    ImGuiID dockspaceId = ImGui::GetID("MyDockSpace");
+    ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), dockspaceFlags);
+
+    // Setup default layout on first run
+    if (firstTime) {
+      firstTime = false;
+      ImGui::DockBuilderRemoveNode(dockspaceId);
+      ImGui::DockBuilderAddNode(dockspaceId,
+                                dockspaceFlags | ImGuiDockNodeFlags_DockSpace);
+      ImGui::DockBuilderSetNodeSize(dockspaceId, viewport->WorkSize);
+
+      // Split the dockspace
+      ImGuiID dockLeft, dockRight, dockBottom;
+      ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Left, 0.2f, &dockLeft,
+                                  &dockRight);
+      ImGuiID dockRightBottom;
+      ImGui::DockBuilderSplitNode(dockRight, ImGuiDir_Down, 0.25f,
+                                  &dockRightBottom, &dockRight);
+      ImGuiID dockRightRight;
+      ImGui::DockBuilderSplitNode(dockRight, ImGuiDir_Right, 0.25f,
+                                  &dockRightRight, &dockRight);
+
+      // Dock windows to nodes
+      ImGui::DockBuilderDockWindow("Scene Hierarchy", dockLeft);
+      ImGui::DockBuilderDockWindow("Properties", dockRightRight);
+      ImGui::DockBuilderDockWindow("Viewport", dockRight);
+      ImGui::DockBuilderDockWindow("Console", dockRightBottom);
+      ImGui::DockBuilderDockWindow("Stats", dockRightBottom);
+      ImGui::DockBuilderDockWindow("##toolbar", dockRight);
+
+      ImGui::DockBuilderFinish(dockspaceId);
+    }
+  }
 
   ImGui::End();
 }
@@ -277,11 +426,11 @@ void EditorApp::DrawMenuBar() {
       bool canDecrease = (ImGuiLayer::m_fontSize - 2.0f) > 10.0f;
 
       if (ImGui::MenuItem("Increase Font Size", nullptr, false, canIncrease)) {
-          ImGuiLayer::SetFontSize(ImGuiLayer::m_fontSize + 2.0f);
+        ImGuiLayer::SetFontSize(ImGuiLayer::m_fontSize + 2.0f);
       }
 
       if (ImGui::MenuItem("Decrease Font Size", nullptr, false, canDecrease)) {
-          ImGuiLayer::SetFontSize(ImGuiLayer::m_fontSize - 2.0f);
+        ImGuiLayer::SetFontSize(ImGuiLayer::m_fontSize - 2.0f);
       }
 
       ImGui::EndMenu();
@@ -290,7 +439,6 @@ void EditorApp::DrawMenuBar() {
     ImGui::EndMainMenuBar();
   }
 }
-
 
 void EditorApp::DrawToolbar() {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 2));
@@ -352,6 +500,71 @@ void EditorApp::DrawViewport() {
                ImVec2(m_ViewportSize.x, m_ViewportSize.y), ImVec2(0, 1),
                ImVec2(1, 0));
 
+  // ImGuizmo
+  if (m_SelectedEntity != NullEntity && m_ActiveScene) {
+    ImGuizmo::SetOrthographic(false);
+    ImGuizmo::SetDrawlist();
+
+    ImGuizmo::SetRect(m_ViewportBounds[0].x, m_ViewportBounds[0].y,
+                      m_ViewportBounds[1].x - m_ViewportBounds[0].x,
+                      m_ViewportBounds[1].y - m_ViewportBounds[0].y);
+
+    // Get camera matrices
+    glm::mat4 cameraView = m_EditorCamera->GetViewMatrix();
+    glm::mat4 cameraProjection = m_EditorCamera->GetProjectionMatrix();
+
+    // Get entity transform
+    auto &world = m_ActiveScene->GetWorld();
+    if (world.HasComponent<TransformComponent>(m_SelectedEntity)) {
+      auto &tc = world.GetComponent<TransformComponent>(m_SelectedEntity);
+      glm::mat4 transform = tc.GetTransform();
+
+      // Determine gizmo operation
+      ImGuizmo::OPERATION operation = ImGuizmo::TRANSLATE;
+      switch (m_GizmoOperation) {
+      case GizmoOperation::Translate:
+        operation = ImGuizmo::TRANSLATE;
+        break;
+      case GizmoOperation::Rotate:
+        operation = ImGuizmo::ROTATE;
+        break;
+      case GizmoOperation::Scale:
+        operation = ImGuizmo::SCALE;
+        break;
+      }
+
+      // Snapping
+      float snapValue = 0.0f;
+      float snapValues[3] = {0.0f, 0.0f, 0.0f};
+      if (m_GizmoUsingSnap) {
+        if (m_GizmoOperation == GizmoOperation::Translate)
+          snapValue = m_SnapTranslate;
+        else if (m_GizmoOperation == GizmoOperation::Rotate)
+          snapValue = m_SnapRotate;
+        else if (m_GizmoOperation == GizmoOperation::Scale)
+          snapValue = m_SnapScale;
+        snapValues[0] = snapValues[1] = snapValues[2] = snapValue;
+      }
+
+      // Manipulate
+      bool manipulated = ImGuizmo::Manipulate(
+          glm::value_ptr(cameraView), glm::value_ptr(cameraProjection),
+          operation, ImGuizmo::LOCAL, glm::value_ptr(transform), nullptr,
+          m_GizmoUsingSnap ? snapValues : nullptr);
+
+      if (manipulated) {
+        // Decompose the matrix back to position, rotation, scale
+        glm::vec3 translation, rotation, scale;
+        ImGuizmo::DecomposeMatrixToComponents(
+            glm::value_ptr(transform), glm::value_ptr(translation),
+            glm::value_ptr(rotation), glm::value_ptr(scale));
+        tc.position = translation;
+        tc.rotation = glm::radians(rotation); // ImGuizmo returns degrees
+        tc.scale = scale;
+      }
+    }
+  }
+
   ImGui::End();
   ImGui::PopStyleVar();
 }
@@ -361,7 +574,21 @@ void EditorApp::NewScene() {
   m_HierarchyPanel.SetScene(m_ActiveScene);
   m_PropertiesPanel.SetScene(m_ActiveScene);
   m_SelectedEntity = NullEntity;
-  GINI_INFO("New scene created");
+
+  // Create some default entities to click on
+  auto cube1 = m_ActiveScene->CreateEntity("Cube 1");
+  auto &t1 = m_ActiveScene->GetWorld().GetComponent<TransformComponent>(cube1);
+  t1.position = Vec3(-3.0f, 0.5f, 0.0f);
+
+  auto cube2 = m_ActiveScene->CreateEntity("Cube 2");
+  auto &t2 = m_ActiveScene->GetWorld().GetComponent<TransformComponent>(cube2);
+  t2.position = Vec3(0.0f, 0.5f, 0.0f);
+
+  auto cube3 = m_ActiveScene->CreateEntity("Cube 3");
+  auto &t3 = m_ActiveScene->GetWorld().GetComponent<TransformComponent>(cube3);
+  t3.position = Vec3(3.0f, 0.5f, 0.0f);
+
+  GINI_INFO("New scene created with 3 cubes");
 }
 
 void EditorApp::OpenScene() {
@@ -379,6 +606,85 @@ void EditorApp::SaveScene() {
 void EditorApp::SaveSceneAs() {
   // TODO: File dialog
   GINI_INFO("Save scene as dialog");
+}
+
+Entity EditorApp::PickEntity(const Vec2 &mousePos) {
+  if (!m_ActiveScene)
+    return NullEntity;
+
+  // Convert mouse position to normalized device coordinates
+  float mouseX = mousePos.x - m_ViewportBounds[0].x;
+  float mouseY = mousePos.y - m_ViewportBounds[0].y;
+  float viewportWidth = m_ViewportBounds[1].x - m_ViewportBounds[0].x;
+  float viewportHeight = m_ViewportBounds[1].y - m_ViewportBounds[0].y;
+
+  // Normalize to [-1, 1]
+  float ndcX = (2.0f * mouseX) / viewportWidth - 1.0f;
+  float ndcY = 1.0f - (2.0f * mouseY) / viewportHeight; // Flip Y
+
+  // Get inverse view-projection matrix
+  Mat4 invViewProj = glm::inverse(m_EditorCamera->GetViewProjectionMatrix());
+
+  // Create ray in world space
+  Vec4 rayClipNear = Vec4(ndcX, ndcY, -1.0f, 1.0f);
+  Vec4 rayClipFar = Vec4(ndcX, ndcY, 1.0f, 1.0f);
+
+  Vec4 rayWorldNear = invViewProj * rayClipNear;
+  Vec4 rayWorldFar = invViewProj * rayClipFar;
+
+  rayWorldNear /= rayWorldNear.w;
+  rayWorldFar /= rayWorldFar.w;
+
+  Vec3 rayOrigin = Vec3(rayWorldNear);
+  Vec3 rayDir = glm::normalize(Vec3(rayWorldFar) - Vec3(rayWorldNear));
+
+  // Test intersection with all entities - collect all hits and sort by distance
+  Entity closestEntity = NullEntity;
+  float closestT = std::numeric_limits<float>::max();
+
+  auto &world = m_ActiveScene->GetWorld();
+  auto view = world.GetRegistry().view<TransformComponent, TagComponent>();
+
+  for (auto entity : view) {
+    auto &transform = view.get<TransformComponent>(entity);
+
+    // Calculate AABB for entity (assuming unit cube scaled by transform.scale)
+    Vec3 halfSize = transform.scale * 0.5f;
+    Vec3 boxMin = transform.position - halfSize;
+    Vec3 boxMax = transform.position + halfSize;
+
+    float t;
+    if (RayIntersectsAABB(rayOrigin, rayDir, boxMin, boxMax, t)) {
+      if (t < closestT && t > 0.0f) {
+        closestT = t;
+        closestEntity = entity;
+      }
+    }
+  }
+
+  return closestEntity;
+}
+
+bool EditorApp::RayIntersectsAABB(const Vec3 &rayOrigin, const Vec3 &rayDir,
+                                  const Vec3 &boxMin, const Vec3 &boxMax,
+                                  float &t) {
+  Vec3 invDir = 1.0f / rayDir;
+
+  Vec3 t1 = (boxMin - rayOrigin) * invDir;
+  Vec3 t2 = (boxMax - rayOrigin) * invDir;
+
+  Vec3 tMin = glm::min(t1, t2);
+  Vec3 tMax = glm::max(t1, t2);
+
+  float tNear = glm::max(glm::max(tMin.x, tMin.y), tMin.z);
+  float tFar = glm::min(glm::min(tMax.x, tMax.y), tMax.z);
+
+  if (tNear > tFar || tFar < 0.0f) {
+    return false;
+  }
+
+  t = tNear;
+  return true;
 }
 
 } // namespace Gini

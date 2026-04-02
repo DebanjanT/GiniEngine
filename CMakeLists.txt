@@ -11,6 +11,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Build options
 option(GINI_BUILD_EDITOR "Build the Gini Editor" ON)
+option(GINI_BUILD_RUNTIME "Build the Gini Runtime" ON)
 option(GINI_BUILD_SAMPLES "Build sample games" ON)
 option(GINI_ENABLE_STEAM "Enable Steam SDK integration" OFF)
 
@@ -70,11 +71,11 @@ FetchContent_Declare(
     GIT_TAG master
 )
 
-# Dear ImGui
+# Dear ImGui (docking branch for dockable panels)
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG v1.89.9
+    GIT_TAG docking
 )
 
 # OpenAL Soft - Audio
@@ -150,6 +151,11 @@ add_subdirectory(Engine)
 # Editor
 if(GINI_BUILD_EDITOR)
     add_subdirectory(Editor)
+endif()
+
+# Runtime
+if(GINI_BUILD_RUNTIME)
+    add_subdirectory(Runtime)
 endif()
 
 # Sample games

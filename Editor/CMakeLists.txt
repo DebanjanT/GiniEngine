@@ -2,7 +2,6 @@
 
 set(EDITOR_SOURCES
     EditorApp.cpp
-    EditorFontSettings.cpp
     Panels/SceneHierarchyPanel.cpp
     Panels/PropertiesPanel.cpp
     Panels/StatsPanel.cpp
@@ -11,7 +10,6 @@ set(EDITOR_SOURCES
 
 set(EDITOR_HEADERS
     EditorApp.h
-    EditorFontSettings.h
     Panels/EditorPanel.h
     Panels/SceneHierarchyPanel.h
     Panels/PropertiesPanel.h
@@ -39,8 +37,8 @@ set_target_properties(GiniEditor PROPERTIES
 # Copy Editor Assets (fonts, etc.)
 add_custom_command(TARGET GiniEditor POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/assets
-        $<TARGET_FILE_DIR:GiniEditor>/assets
+    ${CMAKE_CURRENT_SOURCE_DIR}/assets
+    $<TARGET_FILE_DIR:GiniEditor>/assets
 )
 
 

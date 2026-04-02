@@ -98,11 +98,10 @@ set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
 set(ASSIMP_NO_EXPORT ON CACHE BOOL "" FORCE)
 
-# 🔥 FIX HERE
 set(ASSIMP_BUILD_ZLIB ON CACHE BOOL "" FORCE)
 
 set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
-
+add_definitions(-Dfdopen=fdopen)
 FetchContent_MakeAvailable(assimp)
 # Fetch all dependencies
 FetchContent_MakeAvailable(glfw glm entt stb imgui openal assimp)

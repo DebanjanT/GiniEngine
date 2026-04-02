@@ -6,6 +6,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
+#include <imgui_impl_opengl3.h>
 #include <imgui_internal.h>
 #include <limits>
 
@@ -15,8 +16,8 @@ EditorApp::EditorApp()
     : Application([]() {
         EngineConfig config;
         config.windowTitle = "Gini Editor";
-        config.windowWidth = 1600;
-        config.windowHeight = 900;
+        config.windowWidth = 1920;
+        config.windowHeight = 1080;
         config.vsync = true;
         return config;
       }()) {}
@@ -421,6 +422,17 @@ void EditorApp::DrawMenuBar() {
     if (ImGui::BeginMenu("Help")) {
       if (ImGui::MenuItem("About Gini Engine")) {
       }
+      bool canIncrease = (ImGuiLayer::m_fontSize + 2.0f) < 23.0f;
+      bool canDecrease = (ImGuiLayer::m_fontSize - 2.0f) > 10.0f;
+
+      if (ImGui::MenuItem("Increase Font Size", nullptr, false, canIncrease)) {
+        ImGuiLayer::SetFontSize(ImGuiLayer::m_fontSize + 2.0f);
+      }
+
+      if (ImGui::MenuItem("Decrease Font Size", nullptr, false, canDecrease)) {
+        ImGuiLayer::SetFontSize(ImGuiLayer::m_fontSize - 2.0f);
+      }
+
       ImGui::EndMenu();
     }
 

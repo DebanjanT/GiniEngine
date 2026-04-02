@@ -19,6 +19,7 @@ option(GINI_ENABLE_STEAM "Enable Steam SDK integration" OFF)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(ASSIMP_BUILD_ZLIB ON CACHE BOOL "" FORCE)
 
 # Platform detection
 if(WIN32)
@@ -86,22 +87,35 @@ FetchContent_Declare(
 set(ALSOFT_UTILS OFF CACHE BOOL "" FORCE)
 set(ALSOFT_EXAMPLES OFF CACHE BOOL "" FORCE)
 
-# Assimp - Model loading (OBJ, GLTF, FBX, etc.)
 FetchContent_Declare(
     assimp
     GIT_REPOSITORY https://github.com/assimp/assimp.git
     GIT_TAG v5.4.3
 )
+
+# yaml-cpp - Scene serialization
+FetchContent_Declare(
+    yaml-cpp
+    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+    GIT_TAG 0.8.0
+)
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+
 set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
 set(ASSIMP_NO_EXPORT ON CACHE BOOL "" FORCE)
-set(ASSIMP_BUILD_ZLIB OFF CACHE BOOL "" FORCE)
-set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
 
+set(ASSIMP_BUILD_ZLIB ON CACHE BOOL "" FORCE)
+
+set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
+add_definitions(-Dfdopen=fdopen)
+FetchContent_MakeAvailable(assimp)
 # Fetch all dependencies
-FetchContent_MakeAvailable(glfw glm entt stb imgui openal assimp)
+FetchContent_MakeAvailable(glfw glm entt stb imgui openal assimp yaml-cpp)
 
 # GLAD - OpenGL loader (we'll include it directly)
 add_library(glad STATIC

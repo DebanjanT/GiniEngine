@@ -127,4 +127,54 @@ struct AIComponent {
   u64 targetEntity = 0;
 };
 
+// 3D Rendering Components
+enum class MeshType { None = 0, Cube, Sphere, Plane, Cylinder, Custom };
+
+struct MeshComponent {
+  MeshType meshType = MeshType::Cube;
+  std::string modelPath;
+  bool castShadows = true;
+  bool receiveShadows = true;
+};
+
+struct MaterialComponent {
+  Vec3 albedo{1.0f, 1.0f, 1.0f};
+  f32 metallic = 0.0f;
+  f32 roughness = 0.5f;
+  f32 ao = 1.0f;
+  Vec3 emissive{0.0f, 0.0f, 0.0f};
+  std::string albedoTexturePath;
+  std::string normalTexturePath;
+  std::string metallicTexturePath;
+  std::string roughnessTexturePath;
+  std::string aoTexturePath;
+};
+
+struct LightComponent {
+  int type = 1; // 0=Directional, 1=Point, 2=Spot (matches LightType enum)
+  Vec3 color{1.0f, 1.0f, 1.0f};
+  f32 intensity = 1.0f;
+  f32 range = 10.0f;
+  f32 innerConeAngle = 30.0f;
+  f32 outerConeAngle = 45.0f;
+  bool castShadows = true;
+};
+
+struct CameraComponent {
+  bool isPrimary = true;
+  f32 fov = 45.0f;
+  f32 nearClip = 0.1f;
+  f32 farClip = 1000.0f;
+  f32 aspectRatio = 16.0f / 9.0f;
+};
+
+// Skybox Component
+struct SkyboxComponent {
+  std::string hdrPath;
+  std::string cubemapPaths[6]; // For non-HDR cubemaps
+  f32 intensity = 1.0f;
+  f32 lod = 0.0f;
+  bool useHDR = true;
+};
+
 } // namespace Gini

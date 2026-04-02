@@ -25,6 +25,7 @@ set(ENGINE_SOURCES
     Renderer/Camera3D.cpp
     Renderer/Light.cpp
     Renderer/Renderer3D.cpp
+    Renderer/Skybox.cpp
 
     # ECS
     ECS/World.cpp
@@ -57,6 +58,11 @@ set(ENGINE_SOURCES
 
     # Scene
     Scene/Scene.cpp
+    Scene/SceneSerializer.cpp
+
+    # Terrain
+    Terrain/Terrain.cpp
+    Terrain/Vegetation.cpp
 )
 
 set(ENGINE_HEADERS
@@ -139,6 +145,7 @@ target_link_libraries(GiniEngine PUBLIC
     imgui_lib
     OpenAL::OpenAL
     assimp::assimp
+    yaml-cpp::yaml-cpp
 )
 
 # Precompiled header for faster builds

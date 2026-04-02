@@ -92,6 +92,16 @@ FetchContent_Declare(
     GIT_TAG v5.4.3
 )
 
+# yaml-cpp - Scene serialization
+FetchContent_Declare(
+    yaml-cpp
+    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+    GIT_TAG 0.8.0
+)
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+
 set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
@@ -104,7 +114,7 @@ set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
 add_definitions(-Dfdopen=fdopen)
 FetchContent_MakeAvailable(assimp)
 # Fetch all dependencies
-FetchContent_MakeAvailable(glfw glm entt stb imgui openal assimp)
+FetchContent_MakeAvailable(glfw glm entt stb imgui openal assimp yaml-cpp)
 
 # GLAD - OpenGL loader (we'll include it directly)
 add_library(glad STATIC

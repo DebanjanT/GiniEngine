@@ -12,16 +12,53 @@
 #include <GLFW/glfw3.h>
 
 #include <cstring>
+#include <filesystem>
 
-#ifdef _WIN32
-const char *fontPath = "C:/Windows/Fonts/Arial.ttf";
-#elif __APPLE__
-const char *fontPath = "/System/Library/Fonts/SFNS.ttf"; // fallback
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#elif _WIN32
+#include <windows.h>
 #else
-const char *fontPath = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
+#include <limits.h>
+#include <unistd.h>
 #endif
 
 namespace Gini {
+
+static std::string GetExecutableDir() {
+  std::string path;
+#ifdef __APPLE__
+  char buf[PATH_MAX];
+  uint32_t size = sizeof(buf);
+  if (_NSGetExecutablePath(buf, &size) == 0) {
+    path = std::filesystem::path(buf).parent_path().string();
+  }
+#elif _WIN32
+  char buf[MAX_PATH];
+  GetModuleFileNameA(NULL, buf, MAX_PATH);
+  path = std::filesystem::path(buf).parent_path().string();
+#else
+  char buf[PATH_MAX];
+  ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+  if (len != -1) {
+    buf[len] = '\0';
+    path = std::filesystem::path(buf).parent_path().string();
+  }
+#endif
+  return path;
+}
+
+static std::string GetFontPath(const std::string &fontName) {
+  std::string exeDir = GetExecutableDir();
+  if (!exeDir.empty()) {
+    std::string fontPath = exeDir + "/assets/fonts/" + fontName;
+    if (std::filesystem::exists(fontPath)) {
+      return fontPath;
+    }
+  }
+  // Fallback to relative path
+  return "assets/fonts/" + fontName;
+}
 float ImGuiLayer::m_fontSize = 16.0f;
 float ImGuiLayer::m_pendingFontSize = -1.0f;
 bool ImGuiLayer::s_Initialized = false;
@@ -46,11 +83,13 @@ void ImGuiLayer::Init() {
     style.Colors[ImGuiCol_WindowBg].w = 1.0f;
   }
 
-  ImFont *regular = io.Fonts->AddFontFromFileTTF(
-      "assets/fonts/SpaceGrotesk-Regular.ttf", m_fontSize);
+  std::string regularFontPath = GetFontPath("SpaceGrotesk-Regular.ttf");
+  std::string semiboldFontPath = GetFontPath("SpaceGrotesk-SemiBold.ttf");
 
-  ImFont *semibold = io.Fonts->AddFontFromFileTTF(
-      "assets/fonts/SpaceGrotesk-SemiBold.ttf", m_fontSize);
+  ImFont *regular =
+      io.Fonts->AddFontFromFileTTF(regularFontPath.c_str(), m_fontSize);
+  ImFont *semibold =
+      io.Fonts->AddFontFromFileTTF(semiboldFontPath.c_str(), m_fontSize);
 
   if (!regular) {
     GINI_ERROR("Regular Font load failed!");
@@ -80,11 +119,12 @@ void ImGuiLayer::ReloadFonts(float size) {
 
   io.Fonts->Clear();
 
-  ImFont *regular = io.Fonts->AddFontFromFileTTF(
-      "assets/fonts/SpaceGrotesk-Regular.ttf", size);
+  std::string regularFontPath = GetFontPath("SpaceGrotesk-Regular.ttf");
+  std::string semiboldFontPath = GetFontPath("SpaceGrotesk-SemiBold.ttf");
 
-  ImFont *semibold = io.Fonts->AddFontFromFileTTF(
-      "assets/fonts/SpaceGrotesk-SemiBold.ttf", size);
+  ImFont *regular = io.Fonts->AddFontFromFileTTF(regularFontPath.c_str(), size);
+  ImFont *semibold =
+      io.Fonts->AddFontFromFileTTF(semiboldFontPath.c_str(), size);
 
   if (!regular) {
     GINI_ERROR("Font load failed!");
@@ -122,8 +162,8 @@ void ImGuiLayer::Begin() {
     ImGuiIO &io = ImGui::GetIO();
     io.Fonts->Clear();
 
-    ImFont *font = io.Fonts->AddFontFromFileTTF(
-        "assets/fonts/SpaceGrotesk-Regular.ttf", m_fontSize);
+    std::string fontPath = GetFontPath("SpaceGrotesk-Regular.ttf");
+    ImFont *font = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), m_fontSize);
 
     if (!font)
       font = io.Fonts->AddFontDefault();

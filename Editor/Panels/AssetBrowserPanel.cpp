@@ -2,7 +2,9 @@
 #include "Core/Logger.h"
 #include "Project/Project.h"
 #include <algorithm>
+#include <fstream>
 #include <imgui.h>
+#include <yaml-cpp/yaml.h>
 
 namespace Gini {
 
@@ -399,6 +401,33 @@ Ref<Texture2D> AssetBrowserPanel::GetThumbnail(const AssetMetadata &asset) {
       }
     } catch (...) {
       // Failed to load, use default icon
+    }
+  }
+
+  // For materials (.gmat), try to load the albedo texture as thumbnail
+  if (asset.type == AssetType::Material) {
+    auto it = m_ThumbnailCache.find(asset.absolutePath.string());
+    if (it != m_ThumbnailCache.end()) {
+      return it->second;
+    }
+
+    try {
+      YAML::Node data = YAML::LoadFile(asset.absolutePath.string());
+      if (data["Material"]) {
+        auto material = data["Material"];
+        if (material["AlbedoTexture"]) {
+          std::string texturePath = material["AlbedoTexture"].as<std::string>();
+          if (std::filesystem::exists(texturePath)) {
+            Ref<Texture2D> tex = Texture2D::Create(texturePath);
+            if (tex) {
+              m_ThumbnailCache[asset.absolutePath.string()] = tex;
+              return tex;
+            }
+          }
+        }
+      }
+    } catch (...) {
+      // Failed to parse material, use default icon
     }
   }
 

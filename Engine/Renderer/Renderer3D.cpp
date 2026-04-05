@@ -9,28 +9,28 @@
 namespace Gini {
 
 struct Renderer3DData {
-    Ref<Shader> pbrShader;
-    Ref<Shader> basicShader;
-    Ref<Shader> skyboxShader;
-    Ref<Shader> lineShader;
-    
-    Ref<Mesh> cubeMesh;
-    Ref<Mesh> sphereMesh;
-    Ref<Mesh> planeMesh;
-    
-    Mat4 viewMatrix;
-    Mat4 projectionMatrix;
-    Vec3 cameraPosition;
-    
-    Renderer3DStats stats;
-    
-    bool wireframeMode = false;
+  Ref<Shader> pbrShader;
+  Ref<Shader> basicShader;
+  Ref<Shader> skyboxShader;
+  Ref<Shader> lineShader;
+
+  Ref<Mesh> cubeMesh;
+  Ref<Mesh> sphereMesh;
+  Ref<Mesh> planeMesh;
+
+  Mat4 viewMatrix;
+  Mat4 projectionMatrix;
+  Vec3 cameraPosition;
+
+  Renderer3DStats stats;
+
+  bool wireframeMode = false;
 };
 
-static Renderer3DData* s_Data = nullptr;
+static Renderer3DData *s_Data = nullptr;
 
 // PBR Shader source
-static const char* s_PBRVertexShader = R"(
+static const char *s_PBRVertexShader = R"(
 #version 410 core
 layout (location = 0) in vec3 a_Position;
 layout (location = 1) in vec3 a_Normal;
@@ -62,7 +62,7 @@ void main() {
 }
 )";
 
-static const char* s_PBRFragmentShader = R"(
+static const char *s_PBRFragmentShader = R"(
 #version 410 core
 out vec4 FragColor;
 
@@ -261,7 +261,7 @@ void main() {
 )";
 
 // Basic shader for simple rendering
-static const char* s_BasicVertexShader = R"(
+static const char *s_BasicVertexShader = R"(
 #version 410 core
 layout (location = 0) in vec3 a_Position;
 layout (location = 1) in vec3 a_Normal;
@@ -284,7 +284,7 @@ void main() {
 }
 )";
 
-static const char* s_BasicFragmentShader = R"(
+static const char *s_BasicFragmentShader = R"(
 #version 410 core
 out vec4 FragColor;
 
@@ -316,7 +316,7 @@ void main() {
 )";
 
 // Line shader
-static const char* s_LineVertexShader = R"(
+static const char *s_LineVertexShader = R"(
 #version 410 core
 layout (location = 0) in vec3 a_Position;
 layout (location = 1) in vec4 a_Color;
@@ -331,7 +331,7 @@ void main() {
 }
 )";
 
-static const char* s_LineFragmentShader = R"(
+static const char *s_LineFragmentShader = R"(
 #version 410 core
 out vec4 FragColor;
 
@@ -343,309 +343,356 @@ void main() {
 )";
 
 void Renderer3D::Init() {
-    s_Data = new Renderer3DData();
-    
-    GINI_INFO("Initializing 3D Renderer");
-    
-    // Enable depth testing
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LESS);
-    
-    // Enable face culling
-    glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
-    glFrontFace(GL_CCW);
-    
-    // Enable blending
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    
-    InitShaders();
-    InitPrimitives();
+  s_Data = new Renderer3DData();
+
+  GINI_INFO("Initializing 3D Renderer");
+
+  // Enable depth testing
+  glEnable(GL_DEPTH_TEST);
+  glDepthFunc(GL_LESS);
+
+  // Enable face culling
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_BACK);
+  glFrontFace(GL_CCW);
+
+  // Enable blending
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+  InitShaders();
+  InitPrimitives();
 }
 
 void Renderer3D::Shutdown() {
-    GINI_INFO("Shutting down 3D Renderer");
-    delete s_Data;
-    s_Data = nullptr;
+  GINI_INFO("Shutting down 3D Renderer");
+  delete s_Data;
+  s_Data = nullptr;
 }
 
 void Renderer3D::InitShaders() {
-    s_Data->pbrShader = Shader::Create(s_PBRVertexShader, s_PBRFragmentShader);
-    s_Data->basicShader = Shader::Create(s_BasicVertexShader, s_BasicFragmentShader);
-    s_Data->lineShader = Shader::Create(s_LineVertexShader, s_LineFragmentShader);
+  s_Data->pbrShader = Shader::Create(s_PBRVertexShader, s_PBRFragmentShader);
+  s_Data->basicShader =
+      Shader::Create(s_BasicVertexShader, s_BasicFragmentShader);
+  s_Data->lineShader = Shader::Create(s_LineVertexShader, s_LineFragmentShader);
 }
 
 void Renderer3D::InitPrimitives() {
-    s_Data->cubeMesh = Mesh::CreateCube(1.0f);
-    s_Data->sphereMesh = Mesh::CreateSphere(1.0f, 32, 16);
-    s_Data->planeMesh = Mesh::CreatePlane(1.0f, 1.0f);
+  s_Data->cubeMesh = Mesh::CreateCube(1.0f);
+  s_Data->sphereMesh = Mesh::CreateSphere(1.0f, 32, 16);
+  s_Data->planeMesh = Mesh::CreatePlane(1.0f, 1.0f);
 }
 
-void Renderer3D::BeginScene(const Camera3D& camera) {
-    BeginScene(camera.GetViewMatrix(), camera.GetProjectionMatrix(), camera.GetPosition());
+void Renderer3D::BeginScene(const Camera3D &camera) {
+  BeginScene(camera.GetViewMatrix(), camera.GetProjectionMatrix(),
+             camera.GetPosition());
 }
 
-void Renderer3D::BeginScene(const Mat4& viewMatrix, const Mat4& projectionMatrix, const Vec3& cameraPosition) {
-    s_Data->viewMatrix = viewMatrix;
-    s_Data->projectionMatrix = projectionMatrix;
-    s_Data->cameraPosition = cameraPosition;
-    s_Data->stats.Reset();
+void Renderer3D::BeginScene(const Mat4 &viewMatrix,
+                            const Mat4 &projectionMatrix,
+                            const Vec3 &cameraPosition) {
+  s_Data->viewMatrix = viewMatrix;
+  s_Data->projectionMatrix = projectionMatrix;
+  s_Data->cameraPosition = cameraPosition;
+  s_Data->stats.Reset();
 }
 
 void Renderer3D::EndScene() {
-    // Flush any batched draws
+  // Flush any batched draws
 }
 
-void Renderer3D::SetClearColor(const Color& color) {
-    glClearColor(color.r, color.g, color.b, color.a);
+void Renderer3D::SetClearColor(const Color &color) {
+  glClearColor(color.r, color.g, color.b, color.a);
 }
 
-void Renderer3D::Clear() {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-}
+void Renderer3D::Clear() { glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); }
 
 void Renderer3D::SetViewport(i32 x, i32 y, i32 width, i32 height) {
-    glViewport(x, y, width, height);
+  glViewport(x, y, width, height);
 }
 
-void Renderer3D::DrawMesh(const Ref<Mesh>& mesh, const Mat4& transform, const Color& color) {
-    if (!mesh) return;
-    
-    s_Data->basicShader->Bind();
-    s_Data->basicShader->SetMat4("u_Model", transform);
-    s_Data->basicShader->SetMat4("u_View", s_Data->viewMatrix);
-    s_Data->basicShader->SetMat4("u_Projection", s_Data->projectionMatrix);
-    s_Data->basicShader->SetMat3("u_NormalMatrix", glm::transpose(glm::inverse(Mat3(transform))));
-    s_Data->basicShader->SetFloat4("u_Color", Vec4(color.r, color.g, color.b, color.a));
+void Renderer3D::DrawMesh(const Ref<Mesh> &mesh, const Mat4 &transform,
+                          const Color &color) {
+  if (!mesh)
+    return;
+
+  s_Data->basicShader->Bind();
+  s_Data->basicShader->SetMat4("u_Model", transform);
+  s_Data->basicShader->SetMat4("u_View", s_Data->viewMatrix);
+  s_Data->basicShader->SetMat4("u_Projection", s_Data->projectionMatrix);
+  s_Data->basicShader->SetMat3("u_NormalMatrix",
+                               glm::transpose(glm::inverse(Mat3(transform))));
+  s_Data->basicShader->SetFloat4("u_Color",
+                                 Vec4(color.r, color.g, color.b, color.a));
+  s_Data->basicShader->SetInt("u_HasTexture", 0);
+  s_Data->basicShader->SetVec3("u_LightDir", Vec3(-0.2f, -1.0f, -0.3f));
+  s_Data->basicShader->SetVec3("u_LightColor", Vec3(1.0f));
+
+  mesh->Draw();
+
+  s_Data->stats.drawCalls++;
+  s_Data->stats.triangles += mesh->GetIndexCount() / 3;
+  s_Data->stats.vertices += mesh->GetVertexCount();
+  s_Data->stats.meshesDrawn++;
+}
+
+void Renderer3D::DrawMesh(const Ref<Mesh> &mesh, const Mat4 &transform,
+                          const Ref<Texture2D> &texture) {
+  if (!mesh)
+    return;
+
+  s_Data->basicShader->Bind();
+  s_Data->basicShader->SetMat4("u_Model", transform);
+  s_Data->basicShader->SetMat4("u_View", s_Data->viewMatrix);
+  s_Data->basicShader->SetMat4("u_Projection", s_Data->projectionMatrix);
+  s_Data->basicShader->SetMat3("u_NormalMatrix",
+                               glm::transpose(glm::inverse(Mat3(transform))));
+  s_Data->basicShader->SetFloat4("u_Color", Vec4(1.0f));
+  s_Data->basicShader->SetVec3("u_LightDir", Vec3(-0.2f, -1.0f, -0.3f));
+  s_Data->basicShader->SetVec3("u_LightColor", Vec3(1.0f));
+
+  if (texture) {
+    texture->Bind(0);
+    s_Data->basicShader->SetInt("u_Texture", 0);
+    s_Data->basicShader->SetInt("u_HasTexture", 1);
+  } else {
     s_Data->basicShader->SetInt("u_HasTexture", 0);
-    s_Data->basicShader->SetVec3("u_LightDir", Vec3(-0.2f, -1.0f, -0.3f));
-    s_Data->basicShader->SetVec3("u_LightColor", Vec3(1.0f));
-    
-    mesh->Draw();
-    
-    s_Data->stats.drawCalls++;
-    s_Data->stats.triangles += mesh->GetIndexCount() / 3;
-    s_Data->stats.vertices += mesh->GetVertexCount();
-    s_Data->stats.meshesDrawn++;
+  }
+
+  mesh->Draw();
+
+  s_Data->stats.drawCalls++;
+  s_Data->stats.triangles += mesh->GetIndexCount() / 3;
+  s_Data->stats.vertices += mesh->GetVertexCount();
+  s_Data->stats.meshesDrawn++;
 }
 
-void Renderer3D::DrawMesh(const Ref<Mesh>& mesh, const Mat4& transform, const Ref<Texture2D>& texture) {
-    if (!mesh) return;
-    
-    s_Data->basicShader->Bind();
-    s_Data->basicShader->SetMat4("u_Model", transform);
-    s_Data->basicShader->SetMat4("u_View", s_Data->viewMatrix);
-    s_Data->basicShader->SetMat4("u_Projection", s_Data->projectionMatrix);
-    s_Data->basicShader->SetMat3("u_NormalMatrix", glm::transpose(glm::inverse(Mat3(transform))));
-    s_Data->basicShader->SetFloat4("u_Color", Vec4(1.0f));
-    s_Data->basicShader->SetVec3("u_LightDir", Vec3(-0.2f, -1.0f, -0.3f));
-    s_Data->basicShader->SetVec3("u_LightColor", Vec3(1.0f));
-    
-    if (texture) {
-        texture->Bind(0);
-        s_Data->basicShader->SetInt("u_Texture", 0);
-        s_Data->basicShader->SetInt("u_HasTexture", 1);
+void Renderer3D::DrawMesh(const Ref<Mesh> &mesh, const Mat4 &transform,
+                          const Material3D &material) {
+  if (!mesh)
+    return;
+
+  s_Data->pbrShader->Bind();
+  s_Data->pbrShader->SetMat4("u_Model", transform);
+  s_Data->pbrShader->SetMat4("u_View", s_Data->viewMatrix);
+  s_Data->pbrShader->SetMat4("u_Projection", s_Data->projectionMatrix);
+  s_Data->pbrShader->SetMat3("u_NormalMatrix",
+                             glm::transpose(glm::inverse(Mat3(transform))));
+  s_Data->pbrShader->SetVec3("u_CameraPos", s_Data->cameraPosition);
+
+  // Material properties
+  s_Data->pbrShader->SetVec3("u_Material_albedo", material.albedo);
+  s_Data->pbrShader->SetFloat("u_Material_metallic", material.metallic);
+  s_Data->pbrShader->SetFloat("u_Material_roughness", material.roughness);
+  s_Data->pbrShader->SetFloat("u_Material_ao", material.ao);
+  s_Data->pbrShader->SetVec3("u_Material_emissive", material.emissive);
+
+  // Upload lights
+  LightManager::Get().UploadToShader(s_Data->pbrShader.get());
+
+  // Bind textures
+  u32 textureUnit = 0;
+
+  if (material.albedoMap) {
+    material.albedoMap->Bind(textureUnit);
+    s_Data->pbrShader->SetInt("u_AlbedoMap", textureUnit++);
+    s_Data->pbrShader->SetInt("u_HasAlbedoMap", 1);
+  } else {
+    s_Data->pbrShader->SetInt("u_HasAlbedoMap", 0);
+  }
+
+  if (material.normalMap) {
+    material.normalMap->Bind(textureUnit);
+    s_Data->pbrShader->SetInt("u_NormalMap", textureUnit++);
+    s_Data->pbrShader->SetInt("u_HasNormalMap", 1);
+  } else {
+    s_Data->pbrShader->SetInt("u_HasNormalMap", 0);
+  }
+
+  if (material.metallicMap) {
+    material.metallicMap->Bind(textureUnit);
+    s_Data->pbrShader->SetInt("u_MetallicMap", textureUnit++);
+    s_Data->pbrShader->SetInt("u_HasMetallicMap", 1);
+  } else {
+    s_Data->pbrShader->SetInt("u_HasMetallicMap", 0);
+  }
+
+  if (material.roughnessMap) {
+    material.roughnessMap->Bind(textureUnit);
+    s_Data->pbrShader->SetInt("u_RoughnessMap", textureUnit++);
+    s_Data->pbrShader->SetInt("u_HasRoughnessMap", 1);
+  } else {
+    s_Data->pbrShader->SetInt("u_HasRoughnessMap", 0);
+  }
+
+  if (material.aoMap) {
+    material.aoMap->Bind(textureUnit);
+    s_Data->pbrShader->SetInt("u_AOMap", textureUnit++);
+    s_Data->pbrShader->SetInt("u_HasAOMap", 1);
+  } else {
+    s_Data->pbrShader->SetInt("u_HasAOMap", 0);
+  }
+
+  mesh->Draw();
+
+  s_Data->stats.drawCalls++;
+  s_Data->stats.triangles += mesh->GetIndexCount() / 3;
+  s_Data->stats.vertices += mesh->GetVertexCount();
+  s_Data->stats.meshesDrawn++;
+}
+
+void Renderer3D::DrawModel(const Ref<Model> &model, const Mat4 &transform) {
+  if (!model)
+    return;
+
+  const auto &meshes = model->GetMeshes();
+  const auto &materials = model->GetMaterials();
+  const auto &materialIndices = model->GetMeshMaterialIndices();
+
+  for (u32 i = 0; i < meshes.size(); i++) {
+    if (i < materialIndices.size() && materialIndices[i] >= 0 &&
+        materialIndices[i] < static_cast<i32>(materials.size())) {
+      DrawMesh(meshes[i], transform, materials[materialIndices[i]]);
     } else {
-        s_Data->basicShader->SetInt("u_HasTexture", 0);
+      Material3D defaultMat;
+      DrawMesh(meshes[i], transform, defaultMat);
     }
-    
-    mesh->Draw();
-    
-    s_Data->stats.drawCalls++;
-    s_Data->stats.triangles += mesh->GetIndexCount() / 3;
-    s_Data->stats.vertices += mesh->GetVertexCount();
-    s_Data->stats.meshesDrawn++;
+  }
 }
 
-void Renderer3D::DrawMesh(const Ref<Mesh>& mesh, const Mat4& transform, const Material3D& material) {
-    if (!mesh) return;
-    
-    s_Data->pbrShader->Bind();
-    s_Data->pbrShader->SetMat4("u_Model", transform);
-    s_Data->pbrShader->SetMat4("u_View", s_Data->viewMatrix);
-    s_Data->pbrShader->SetMat4("u_Projection", s_Data->projectionMatrix);
-    s_Data->pbrShader->SetMat3("u_NormalMatrix", glm::transpose(glm::inverse(Mat3(transform))));
-    s_Data->pbrShader->SetVec3("u_CameraPos", s_Data->cameraPosition);
-    
-    // Material properties
-    s_Data->pbrShader->SetVec3("u_Material_albedo", material.albedo);
-    s_Data->pbrShader->SetFloat("u_Material_metallic", material.metallic);
-    s_Data->pbrShader->SetFloat("u_Material_roughness", material.roughness);
-    s_Data->pbrShader->SetFloat("u_Material_ao", material.ao);
-    s_Data->pbrShader->SetVec3("u_Material_emissive", material.emissive);
-    
-    // Upload lights
-    LightManager::Get().UploadToShader(s_Data->pbrShader.get());
-    
-    // Bind textures
-    u32 textureUnit = 0;
-    
-    if (material.albedoMap) {
-        material.albedoMap->Bind(textureUnit);
-        s_Data->pbrShader->SetInt("u_AlbedoMap", textureUnit++);
-        s_Data->pbrShader->SetInt("u_HasAlbedoMap", 1);
-    } else {
-        s_Data->pbrShader->SetInt("u_HasAlbedoMap", 0);
-    }
-    
-    if (material.normalMap) {
-        material.normalMap->Bind(textureUnit);
-        s_Data->pbrShader->SetInt("u_NormalMap", textureUnit++);
-        s_Data->pbrShader->SetInt("u_HasNormalMap", 1);
-    } else {
-        s_Data->pbrShader->SetInt("u_HasNormalMap", 0);
-    }
-    
-    if (material.metallicMap) {
-        material.metallicMap->Bind(textureUnit);
-        s_Data->pbrShader->SetInt("u_MetallicMap", textureUnit++);
-        s_Data->pbrShader->SetInt("u_HasMetallicMap", 1);
-    } else {
-        s_Data->pbrShader->SetInt("u_HasMetallicMap", 0);
-    }
-    
-    if (material.roughnessMap) {
-        material.roughnessMap->Bind(textureUnit);
-        s_Data->pbrShader->SetInt("u_RoughnessMap", textureUnit++);
-        s_Data->pbrShader->SetInt("u_HasRoughnessMap", 1);
-    } else {
-        s_Data->pbrShader->SetInt("u_HasRoughnessMap", 0);
-    }
-    
-    if (material.aoMap) {
-        material.aoMap->Bind(textureUnit);
-        s_Data->pbrShader->SetInt("u_AOMap", textureUnit++);
-        s_Data->pbrShader->SetInt("u_HasAOMap", 1);
-    } else {
-        s_Data->pbrShader->SetInt("u_HasAOMap", 0);
-    }
-    
-    mesh->Draw();
-    
-    s_Data->stats.drawCalls++;
-    s_Data->stats.triangles += mesh->GetIndexCount() / 3;
-    s_Data->stats.vertices += mesh->GetVertexCount();
-    s_Data->stats.meshesDrawn++;
+void Renderer3D::DrawModel(const Ref<Model> &model, const Vec3 &position,
+                           const Vec3 &rotation, const Vec3 &scale) {
+  Mat4 transform = glm::translate(Mat4(1.0f), position);
+  transform = glm::rotate(transform, glm::radians(rotation.x), Vec3(1, 0, 0));
+  transform = glm::rotate(transform, glm::radians(rotation.y), Vec3(0, 1, 0));
+  transform = glm::rotate(transform, glm::radians(rotation.z), Vec3(0, 0, 1));
+  transform = glm::scale(transform, scale);
+
+  DrawModel(model, transform);
 }
 
-void Renderer3D::DrawModel(const Ref<Model>& model, const Mat4& transform) {
-    if (!model) return;
-    
-    const auto& meshes = model->GetMeshes();
-    const auto& materials = model->GetMaterials();
-    const auto& materialIndices = model->GetMeshMaterialIndices();
-    
-    for (u32 i = 0; i < meshes.size(); i++) {
-        if (i < materialIndices.size() && materialIndices[i] >= 0 && 
-            materialIndices[i] < static_cast<i32>(materials.size())) {
-            DrawMesh(meshes[i], transform, materials[materialIndices[i]]);
-        } else {
-            Material3D defaultMat;
-            DrawMesh(meshes[i], transform, defaultMat);
-        }
-    }
+void Renderer3D::DrawCube(const Vec3 &position, const Vec3 &size,
+                          const Color &color) {
+  Mat4 transform = glm::translate(Mat4(1.0f), position);
+  transform = glm::scale(transform, size);
+  DrawMesh(s_Data->cubeMesh, transform, color);
 }
 
-void Renderer3D::DrawModel(const Ref<Model>& model, const Vec3& position, const Vec3& rotation, const Vec3& scale) {
-    Mat4 transform = glm::translate(Mat4(1.0f), position);
-    transform = glm::rotate(transform, glm::radians(rotation.x), Vec3(1, 0, 0));
-    transform = glm::rotate(transform, glm::radians(rotation.y), Vec3(0, 1, 0));
-    transform = glm::rotate(transform, glm::radians(rotation.z), Vec3(0, 0, 1));
-    transform = glm::scale(transform, scale);
-    
-    DrawModel(model, transform);
+void Renderer3D::DrawCube(const Vec3 &position, const Vec3 &size,
+                          const Ref<Texture2D> &texture) {
+  Mat4 transform = glm::translate(Mat4(1.0f), position);
+  transform = glm::scale(transform, size);
+  DrawMesh(s_Data->cubeMesh, transform, texture);
 }
 
-void Renderer3D::DrawCube(const Vec3& position, const Vec3& size, const Color& color) {
-    Mat4 transform = glm::translate(Mat4(1.0f), position);
-    transform = glm::scale(transform, size);
-    DrawMesh(s_Data->cubeMesh, transform, color);
+void Renderer3D::DrawSphere(const Vec3 &position, f32 radius,
+                            const Color &color) {
+  Mat4 transform = glm::translate(Mat4(1.0f), position);
+  transform = glm::scale(transform, Vec3(radius));
+  DrawMesh(s_Data->sphereMesh, transform, color);
 }
 
-void Renderer3D::DrawCube(const Vec3& position, const Vec3& size, const Ref<Texture2D>& texture) {
-    Mat4 transform = glm::translate(Mat4(1.0f), position);
-    transform = glm::scale(transform, size);
-    DrawMesh(s_Data->cubeMesh, transform, texture);
+void Renderer3D::DrawPlane(const Vec3 &position, const Vec2 &size,
+                           const Color &color) {
+  Mat4 transform = glm::translate(Mat4(1.0f), position);
+  transform = glm::scale(transform, Vec3(size.x, 1.0f, size.y));
+  DrawMesh(s_Data->planeMesh, transform, color);
 }
 
-void Renderer3D::DrawSphere(const Vec3& position, f32 radius, const Color& color) {
-    Mat4 transform = glm::translate(Mat4(1.0f), position);
-    transform = glm::scale(transform, Vec3(radius));
-    DrawMesh(s_Data->sphereMesh, transform, color);
-}
+Ref<Shader> Renderer3D::GetPBRShader() { return s_Data->pbrShader; }
 
-void Renderer3D::DrawPlane(const Vec3& position, const Vec2& size, const Color& color) {
-    Mat4 transform = glm::translate(Mat4(1.0f), position);
-    transform = glm::scale(transform, Vec3(size.x, 1.0f, size.y));
-    DrawMesh(s_Data->planeMesh, transform, color);
-}
+Ref<Shader> Renderer3D::GetBasicShader() { return s_Data->basicShader; }
 
-Ref<Shader> Renderer3D::GetPBRShader() {
-    return s_Data->pbrShader;
-}
+Ref<Shader> Renderer3D::GetSkyboxShader() { return s_Data->skyboxShader; }
 
-Ref<Shader> Renderer3D::GetBasicShader() {
-    return s_Data->basicShader;
-}
+const Renderer3DStats &Renderer3D::GetStats() { return s_Data->stats; }
 
-Ref<Shader> Renderer3D::GetSkyboxShader() {
-    return s_Data->skyboxShader;
-}
-
-const Renderer3DStats& Renderer3D::GetStats() {
-    return s_Data->stats;
-}
-
-void Renderer3D::ResetStats() {
-    s_Data->stats.Reset();
-}
+void Renderer3D::ResetStats() { s_Data->stats.Reset(); }
 
 void Renderer3D::SetWireframeMode(bool enabled) {
-    s_Data->wireframeMode = enabled;
-    glPolygonMode(GL_FRONT_AND_BACK, enabled ? GL_LINE : GL_FILL);
+  s_Data->wireframeMode = enabled;
+  glPolygonMode(GL_FRONT_AND_BACK, enabled ? GL_LINE : GL_FILL);
 }
 
 void Renderer3D::SetDepthTest(bool enabled) {
-    if (enabled) {
-        glEnable(GL_DEPTH_TEST);
-    } else {
-        glDisable(GL_DEPTH_TEST);
-    }
+  if (enabled) {
+    glEnable(GL_DEPTH_TEST);
+  } else {
+    glDisable(GL_DEPTH_TEST);
+  }
 }
 
 void Renderer3D::SetCullFace(bool enabled) {
-    if (enabled) {
-        glEnable(GL_CULL_FACE);
-    } else {
-        glDisable(GL_CULL_FACE);
-    }
+  if (enabled) {
+    glEnable(GL_CULL_FACE);
+  } else {
+    glDisable(GL_CULL_FACE);
+  }
 }
 
-void Renderer3D::DrawSkybox(const Ref<class TextureCube>& cubemap) {
-    // TODO: Implement skybox rendering
+void Renderer3D::DrawSkybox(const Ref<class TextureCube> &cubemap) {
+  // TODO: Implement skybox rendering
 }
 
-void Renderer3D::DrawLine(const Vec3& start, const Vec3& end, const Color& color) {
-    // TODO: Implement line rendering with batching
+void Renderer3D::DrawLine(const Vec3 &start, const Vec3 &end,
+                          const Color &color) {
+  // Create line vertex data
+  float vertices[] = {start.x, start.y, start.z, color.r, color.g,
+                      color.b, color.a, end.x,   end.y,   end.z,
+                      color.r, color.g, color.b, color.a};
+
+  // Create VAO and VBO for the line
+  GLuint vao, vbo;
+  glGenVertexArrays(1, &vao);
+  glGenBuffers(1, &vbo);
+
+  glBindVertexArray(vao);
+  glBindBuffer(GL_ARRAY_BUFFER, vbo);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+
+  // Position attribute
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7 * sizeof(float), (void *)0);
+
+  // Color attribute
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 7 * sizeof(float),
+                        (void *)(3 * sizeof(float)));
+
+  // Use line shader
+  s_Data->lineShader->Bind();
+  Mat4 viewProjection = s_Data->projectionMatrix * s_Data->viewMatrix;
+  s_Data->lineShader->SetMat4("u_ViewProjection", viewProjection);
+
+  // Draw line
+  glDrawArrays(GL_LINES, 0, 2);
+
+  // Cleanup
+  glBindVertexArray(0);
+  glDeleteBuffers(1, &vbo);
+  glDeleteVertexArrays(1, &vao);
+
+  s_Data->stats.drawCalls++;
 }
 
-void Renderer3D::DrawWireCube(const Vec3& position, const Vec3& size, const Color& color) {
-    bool wasWireframe = s_Data->wireframeMode;
-    SetWireframeMode(true);
-    DrawCube(position, size, color);
-    SetWireframeMode(wasWireframe);
+void Renderer3D::DrawWireCube(const Vec3 &position, const Vec3 &size,
+                              const Color &color) {
+  bool wasWireframe = s_Data->wireframeMode;
+  SetWireframeMode(true);
+  DrawCube(position, size, color);
+  SetWireframeMode(wasWireframe);
 }
 
-void Renderer3D::DrawWireSphere(const Vec3& position, f32 radius, const Color& color) {
-    bool wasWireframe = s_Data->wireframeMode;
-    SetWireframeMode(true);
-    DrawSphere(position, radius, color);
-    SetWireframeMode(wasWireframe);
+void Renderer3D::DrawWireSphere(const Vec3 &position, f32 radius,
+                                const Color &color) {
+  bool wasWireframe = s_Data->wireframeMode;
+  SetWireframeMode(true);
+  DrawSphere(position, radius, color);
+  SetWireframeMode(wasWireframe);
 }
 
-void Renderer3D::DrawGrid(f32 size, u32 divisions, const Color& color) {
-    // TODO: Implement grid rendering
+void Renderer3D::DrawGrid(f32 size, u32 divisions, const Color &color) {
+  // TODO: Implement grid rendering
 }
 
 } // namespace Gini

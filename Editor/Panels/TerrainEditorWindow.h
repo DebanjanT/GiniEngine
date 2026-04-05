@@ -45,6 +45,7 @@ private:
   void HandlePainting(f32 deltaTime);
   Vec3 ScreenToWorldRay(const Vec2 &screenPos);
   void LoadTextureForLayer(u32 layerIndex);
+  void LoadGmatMaterial(u32 layerIndex, const std::string &filepath);
   void SaveTerrain();
   void ExportTerrain();
   void CreateNewTerrain();

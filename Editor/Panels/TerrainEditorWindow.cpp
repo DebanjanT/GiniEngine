@@ -4,11 +4,14 @@
 #include "Project/Project.h"
 #include "Renderer/Material.h"
 #include "Renderer/Renderer3D.h"
+#include "Utils/FileDialog.h"
 
 #include <cstring>
+#include <fstream>
 #include <glm/gtc/matrix_transform.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
+#include <yaml-cpp/yaml.h>
 
 namespace Gini {
 
@@ -463,10 +466,31 @@ void TerrainEditorWindow::DrawLayersPanel() {
     }
 
     ImGui::Separator();
-    ImGui::Text("Load PBR Material:");
+    ImGui::Text("Load Material:");
+
+    // Load .gmat material file
+    if (ImGui::Button("Load Material File (.gmat)", ImVec2(-1, 0))) {
+      std::vector<FileDialogFilter> filters = {{"Gini Material", "gmat"}};
+
+      std::string filepath = FileDialog::OpenFile(filters);
+
+      if (!filepath.empty()) {
+        LoadGmatMaterial(m_SelectedLayer, filepath);
+      }
+    }
+
+    // Drag-drop target for materials
+    if (ImGui::BeginDragDropTarget()) {
+      if (const ImGuiPayload *payload =
+              ImGui::AcceptDragDropPayload("ASSET_MATERIAL")) {
+        const char *path = (const char *)payload->Data;
+        LoadGmatMaterial(m_SelectedLayer, path);
+      }
+      ImGui::EndDragDropTarget();
+    }
 
     // Quick load from broken_down_concrete folder
-    if (ImGui::Button("Load Concrete Material", ImVec2(-1, 0))) {
+    if (ImGui::Button("Load Concrete Material (Legacy)", ImVec2(-1, 0))) {
       // Get material path from active project or fallback to default
       std::filesystem::path materialPath;
       auto activeProject = Project::GetActive();
@@ -672,6 +696,79 @@ void TerrainEditorWindow::LoadTextureForLayer(u32 layerIndex) {
     GINI_INFO("Loaded texture: {}", fullPath);
   } else {
     GINI_WARN("Could not load texture: {}", fullPath);
+  }
+}
+
+void TerrainEditorWindow::LoadGmatMaterial(u32 layerIndex,
+                                           const std::string &filepath) {
+  if (layerIndex >= 4)
+    return;
+
+  try {
+    YAML::Node data = YAML::LoadFile(filepath);
+    if (!data["Material"]) {
+      GINI_ERROR("Invalid .gmat file: ", filepath);
+      return;
+    }
+
+    auto material = data["Material"];
+    TerrainMaterial &mat = m_Materials[layerIndex];
+
+    // Load material name
+    if (material["Name"]) {
+      mat.name = material["Name"].as<std::string>();
+    }
+
+    // Load albedo color as fallback
+    if (material["Albedo"]) {
+      auto albedo = material["Albedo"];
+      if (albedo.IsSequence() && albedo.size() >= 3) {
+        mat.fallbackColor = Vec3(albedo[0].as<float>(), albedo[1].as<float>(),
+                                 albedo[2].as<float>());
+      }
+    }
+
+    // Load roughness and metallic
+    if (material["Roughness"]) {
+      mat.roughness = material["Roughness"].as<float>();
+    }
+    if (material["Metallic"]) {
+      mat.metallic = material["Metallic"].as<float>();
+    }
+
+    // Load albedo texture
+    if (material["AlbedoTexture"]) {
+      std::string texturePath = material["AlbedoTexture"].as<std::string>();
+      if (std::filesystem::exists(texturePath)) {
+        mat.albedoTexture = Texture2D::Create(texturePath);
+        mat.albedoPath = texturePath;
+      }
+    }
+
+    // Load normal texture
+    if (material["NormalTexture"]) {
+      std::string texturePath = material["NormalTexture"].as<std::string>();
+      if (std::filesystem::exists(texturePath)) {
+        mat.normalTexture = Texture2D::Create(texturePath);
+        mat.normalPath = texturePath;
+      }
+    }
+
+    // Update terrain layer
+    if (m_Terrain && layerIndex < m_Terrain->GetLayerCount()) {
+      auto &layer = m_Terrain->GetLayer(layerIndex);
+      layer.color = mat.fallbackColor;
+      layer.albedoMap = mat.albedoTexture;
+      layer.normalMap = mat.normalTexture;
+      layer.roughness = mat.roughness;
+      layer.metallic = mat.metallic;
+      layer.tiling = Vec2(mat.tiling);
+    }
+
+    GINI_INFO("Loaded .gmat material: ", mat.name, " for layer ", layerIndex);
+
+  } catch (const std::exception &e) {
+    GINI_ERROR("Failed to load .gmat material: ", e.what());
   }
 }
 

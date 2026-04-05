@@ -1,7 +1,10 @@
 #pragma once
 
 #include "Gini.h"
+#include "Panels/AssetBrowserPanel.h"
 #include "Panels/ConsolePanel.h"
+#include "Panels/MaterialEditorPanel.h"
+#include "Panels/ProjectLauncher.h"
 #include "Panels/PropertiesPanel.h"
 #include "Panels/SceneHierarchyPanel.h"
 #include "Panels/StatsPanel.h"
@@ -34,6 +37,7 @@ private:
   void OpenScene();
   void SaveScene();
   void SaveSceneAs();
+  void OnProjectLoaded();
 
   // Mouse picking
   Entity PickEntity(const Vec2 &mousePos);
@@ -71,6 +75,14 @@ private:
   // Terrain
   Ref<Terrain> m_Terrain;
   TerrainEditorWindow m_TerrainEditorWindow;
+
+  // Asset Browser & Material Editor
+  AssetBrowserPanel m_AssetBrowserPanel;
+  MaterialEditorPanel m_MaterialEditorPanel;
+
+  // Project Launcher
+  ProjectLauncher m_ProjectLauncher;
+  Ref<Project> m_ActiveProject;
 
   // Editor state
   Entity m_SelectedEntity = NullEntity;

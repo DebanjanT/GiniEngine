@@ -3,6 +3,7 @@
 #include "EditorPanel.h"
 #include "Renderer/Camera3D.h"
 #include "Renderer/Framebuffer.h"
+#include "Renderer/Material.h"
 #include "Renderer/Texture.h"
 #include "Terrain/Terrain.h"
 

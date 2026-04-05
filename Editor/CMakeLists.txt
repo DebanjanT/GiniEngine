@@ -8,6 +8,9 @@ set(EDITOR_SOURCES
     Panels/ConsolePanel.cpp
     Panels/TerrainPanel.cpp
     Panels/TerrainEditorWindow.cpp
+    Panels/AssetBrowserPanel.cpp
+    Panels/MaterialEditorPanel.cpp
+    Panels/ProjectLauncher.cpp
 )
 
 set(EDITOR_HEADERS
@@ -19,6 +22,9 @@ set(EDITOR_HEADERS
     Panels/ConsolePanel.h
     Panels/TerrainPanel.h
     Panels/TerrainEditorWindow.h
+    Panels/AssetBrowserPanel.h
+    Panels/MaterialEditorPanel.h
+    Panels/ProjectLauncher.h
 )
 
 add_executable(GiniEditor ${EDITOR_SOURCES} ${EDITOR_HEADERS})

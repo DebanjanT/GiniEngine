@@ -1,6 +1,8 @@
 #include "TerrainEditorWindow.h"
 #include "Core/Input.h"
 #include "Core/Logger.h"
+#include "Project/Project.h"
+#include "Renderer/Material.h"
 #include "Renderer/Renderer3D.h"
 
 #include <cstring>
@@ -457,6 +459,43 @@ void TerrainEditorWindow::DrawLayersPanel() {
         if (m_Terrain && m_SelectedLayer < m_Terrain->GetLayerCount()) {
           m_Terrain->GetLayer(m_SelectedLayer).albedoMap = nullptr;
         }
+      }
+    }
+
+    ImGui::Separator();
+    ImGui::Text("Load PBR Material:");
+
+    // Quick load from broken_down_concrete folder
+    if (ImGui::Button("Load Concrete Material", ImVec2(-1, 0))) {
+      // Get material path from active project or fallback to default
+      std::filesystem::path materialPath;
+      auto activeProject = Project::GetActive();
+      if (activeProject) {
+        materialPath = activeProject->GetConfig().assetsPath / "textures" /
+                       "terrain" / "broken_down_concrete";
+      } else {
+        // Fallback for when no project is loaded (use editor assets)
+        materialPath =
+            "../../Editor/assets/textures/terrain/broken_down_concrete";
+      }
+      Ref<Material> pbrMat = Material::LoadFromDirectory(materialPath);
+      if (pbrMat) {
+        mat.name = pbrMat->GetName();
+        mat.albedoTexture = pbrMat->GetAlbedoTexture();
+        mat.normalTexture = pbrMat->GetNormalTexture();
+        mat.albedoPath = materialPath;
+        mat.roughness = pbrMat->GetRoughness();
+        mat.metallic = pbrMat->GetMetallic();
+
+        // Update terrain layer
+        if (m_Terrain && m_SelectedLayer < m_Terrain->GetLayerCount()) {
+          auto &layer = m_Terrain->GetLayer(m_SelectedLayer);
+          layer.albedoMap = pbrMat->GetAlbedoTexture();
+          layer.normalMap = pbrMat->GetNormalTexture();
+          layer.roughness = pbrMat->GetRoughness();
+          layer.metallic = pbrMat->GetMetallic();
+        }
+        GINI_INFO("Loaded PBR material: ", mat.name);
       }
     }
   }

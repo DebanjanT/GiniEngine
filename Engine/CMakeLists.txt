@@ -66,6 +66,15 @@ set(ENGINE_SOURCES
     # Terrain
     Terrain/Terrain.cpp
     Terrain/Vegetation.cpp
+
+    # Project
+    Project/Project.cpp
+
+    # Asset
+    Asset/AssetRegistry.cpp
+
+    # Material
+    Renderer/Material.cpp
 )
 
 set(ENGINE_HEADERS

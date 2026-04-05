@@ -62,6 +62,8 @@ void EditorApp::OnInit() {
   m_Terrain = Terrain::Create(128, 128, 50.0f);
   m_Terrain->GenerateFromNoise(0.03f, 50.0f, 4);
   m_TerrainPanel.SetTerrain(m_Terrain);
+
+  // Project launcher will be shown automatically (m_IsOpen = true by default)
 }
 
 void EditorApp::OnShutdown() {
@@ -219,9 +221,21 @@ void EditorApp::OnRender() {
   // Render ImGui
   ImGuiLayer::Begin();
 
-  // If Terrain Editor is open, only render it (fullscreen mode)
-  if (m_TerrainEditorWindow.IsOpen()) {
+  // Show Project Launcher if no project is loaded
+  if (m_ProjectLauncher.IsOpen()) {
+    m_ProjectLauncher.OnImGuiRender();
+
+    // Check if project was loaded
+    if (m_ProjectLauncher.HasProjectLoaded()) {
+      m_ActiveProject = m_ProjectLauncher.GetLoadedProject();
+      OnProjectLoaded();
+    }
+  } else if (m_TerrainEditorWindow.IsOpen()) {
+    // If Terrain Editor is open, only render it (fullscreen mode)
     m_TerrainEditorWindow.OnImGuiRender();
+  } else if (m_MaterialEditorPanel.IsOpen()) {
+    // If Material Editor is open, only render it (fullscreen mode)
+    m_MaterialEditorPanel.OnImGuiRender();
   } else {
     // Normal editor mode
     SetupDockspace();
@@ -235,6 +249,7 @@ void EditorApp::OnRender() {
     m_StatsPanel.OnImGuiRender();
     m_ConsolePanel.OnImGuiRender();
     m_TerrainPanel.OnImGuiRender();
+    m_AssetBrowserPanel.OnImGuiRender();
   }
 
   if (m_ShowDemoWindow) {
@@ -409,6 +424,9 @@ void EditorApp::DrawMenuBar() {
       if (ImGui::MenuItem("Terrain Editor")) {
         m_TerrainEditorWindow.Open();
       }
+      if (ImGui::MenuItem("Material Editor")) {
+        m_MaterialEditorPanel.NewMaterial();
+      }
       ImGui::EndMenu();
     }
 
@@ -428,6 +446,7 @@ void EditorApp::DrawMenuBar() {
       ImGui::MenuItem("Properties", nullptr, &m_PropertiesPanel.m_Visible);
       ImGui::MenuItem("Stats", nullptr, &m_StatsPanel.m_Visible);
       ImGui::MenuItem("Console", nullptr, &m_ConsolePanel.m_Visible);
+      ImGui::MenuItem("Asset Browser", nullptr, &m_AssetBrowserPanel.m_Visible);
       ImGui::Separator();
       ImGui::MenuItem("ImGui Demo", nullptr, &m_ShowDemoWindow);
       ImGui::EndMenu();
@@ -636,6 +655,27 @@ void EditorApp::SaveScene() {
 void EditorApp::SaveSceneAs() {
   // TODO: File dialog
   GINI_INFO("Save scene as dialog");
+}
+
+void EditorApp::OnProjectLoaded() {
+  if (!m_ActiveProject)
+    return;
+
+  // Set as active project globally
+  Project::SetActive(m_ActiveProject);
+
+  const auto &config = m_ActiveProject->GetConfig();
+  GINI_INFO("Project loaded: ", config.name);
+  GINI_INFO("Assets path: ", config.assetsPath.string());
+
+  // Set up Asset Browser with project assets path
+  m_AssetBrowserPanel.SetRootPath(config.assetsPath);
+
+  // Create default scene if none exists
+  NewScene();
+
+  // Close the launcher
+  m_ProjectLauncher.Close();
 }
 
 Entity EditorApp::PickEntity(const Vec2 &mousePos) {

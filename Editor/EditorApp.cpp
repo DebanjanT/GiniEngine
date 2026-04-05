@@ -94,6 +94,12 @@ void EditorApp::OnUpdate(f32 deltaTime) {
 
   m_CameraController->OnUpdate(deltaTime);
 
+  // Handle terrain painting
+  HandleTerrainPainting(deltaTime);
+
+  // Update terrain editor window
+  m_TerrainEditorWindow.OnUpdate(deltaTime);
+
   // Update scene
   if (m_SceneState == SceneState::Play && m_ActiveScene) {
     m_ActiveScene->OnUpdate(deltaTime);
@@ -213,17 +219,23 @@ void EditorApp::OnRender() {
   // Render ImGui
   ImGuiLayer::Begin();
 
-  SetupDockspace();
-  DrawMenuBar();
-  DrawToolbar();
-  DrawViewport();
+  // If Terrain Editor is open, only render it (fullscreen mode)
+  if (m_TerrainEditorWindow.IsOpen()) {
+    m_TerrainEditorWindow.OnImGuiRender();
+  } else {
+    // Normal editor mode
+    SetupDockspace();
+    DrawMenuBar();
+    DrawToolbar();
+    DrawViewport();
 
-  // Draw panels
-  m_HierarchyPanel.OnImGuiRender();
-  m_PropertiesPanel.OnImGuiRender();
-  m_StatsPanel.OnImGuiRender();
-  m_ConsolePanel.OnImGuiRender();
-  m_TerrainPanel.OnImGuiRender();
+    // Draw panels
+    m_HierarchyPanel.OnImGuiRender();
+    m_PropertiesPanel.OnImGuiRender();
+    m_StatsPanel.OnImGuiRender();
+    m_ConsolePanel.OnImGuiRender();
+    m_TerrainPanel.OnImGuiRender();
+  }
 
   if (m_ShowDemoWindow) {
     ImGui::ShowDemoWindow(&m_ShowDemoWindow);
@@ -389,6 +401,13 @@ void EditorApp::DrawMenuBar() {
       ImGui::Separator();
       if (ImGui::MenuItem("Exit")) {
         // Close application
+      }
+      ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginMenu("Tools")) {
+      if (ImGui::MenuItem("Terrain Editor")) {
+        m_TerrainEditorWindow.Open();
       }
       ImGui::EndMenu();
     }
@@ -696,6 +715,88 @@ bool EditorApp::RayIntersectsAABB(const Vec3 &rayOrigin, const Vec3 &rayDir,
 
   t = tNear;
   return true;
+}
+
+Vec3 EditorApp::ScreenToWorldRay(const Vec2 &screenPos) {
+  // Convert screen position to normalized device coordinates
+  Vec2 viewportPos =
+      screenPos - Vec2(m_ViewportBounds[0].x, m_ViewportBounds[0].y);
+  Vec2 ndc;
+  ndc.x = (2.0f * viewportPos.x) / m_ViewportSize.x - 1.0f;
+  ndc.y = 1.0f - (2.0f * viewportPos.y) / m_ViewportSize.y;
+
+  // Create ray in clip space
+  Vec4 rayClip(ndc.x, ndc.y, -1.0f, 1.0f);
+
+  // Transform to eye space
+  Mat4 invProj = glm::inverse(m_EditorCamera->GetProjectionMatrix());
+  Vec4 rayEye = invProj * rayClip;
+  rayEye = Vec4(rayEye.x, rayEye.y, -1.0f, 0.0f);
+
+  // Transform to world space
+  Mat4 invView = glm::inverse(m_EditorCamera->GetViewMatrix());
+  Vec4 rayWorld = invView * rayEye;
+
+  return glm::normalize(Vec3(rayWorld));
+}
+
+void EditorApp::HandleTerrainPainting(f32 deltaTime) {
+  if (!m_Terrain || !m_ViewportHovered) {
+    m_TerrainHit = false;
+    return;
+  }
+
+  auto &input = Input::Get();
+  Vec2 mousePos = input.GetMousePosition();
+
+  // Get ray from camera through mouse position
+  Vec3 rayOrigin = m_EditorCamera->GetPosition();
+  Vec3 rayDir = ScreenToWorldRay(mousePos);
+
+  // Raycast against terrain
+  m_TerrainHit = m_Terrain->Raycast(rayOrigin, rayDir, m_TerrainHitPoint);
+
+  // Check if we should paint
+  auto paintMode = m_TerrainPanel.GetPaintMode();
+  if (paintMode == TerrainPanel::PaintMode::None) {
+    return;
+  }
+
+  // Paint on left mouse button (but not when using camera controls)
+  bool isLeftDown = input.IsMouseButtonDown(MouseButton::Left);
+  bool isRightDown = input.IsMouseButtonDown(MouseButton::Right);
+  bool isAltDown = input.IsKeyDown(Key::LeftAlt);
+
+  if (isLeftDown && !isRightDown && !isAltDown && m_TerrainHit) {
+    auto &brush = m_TerrainPanel.GetBrush();
+    f32 strength = brush.strength * deltaTime * 10.0f; // Scale by deltaTime
+
+    switch (paintMode) {
+    case TerrainPanel::PaintMode::RaiseHeight:
+      m_Terrain->PaintHeight(m_TerrainHitPoint.x, m_TerrainHitPoint.z,
+                             brush.radius, strength, true);
+      break;
+    case TerrainPanel::PaintMode::LowerHeight:
+      m_Terrain->PaintHeight(m_TerrainHitPoint.x, m_TerrainHitPoint.z,
+                             brush.radius, strength, false);
+      break;
+    case TerrainPanel::PaintMode::Smooth:
+      m_Terrain->SmoothHeight(m_TerrainHitPoint.x, m_TerrainHitPoint.z,
+                              brush.radius, strength);
+      break;
+    case TerrainPanel::PaintMode::Flatten:
+      m_Terrain->FlattenHeight(m_TerrainHitPoint.x, m_TerrainHitPoint.z,
+                               brush.radius, m_TerrainHitPoint.y);
+      break;
+    case TerrainPanel::PaintMode::PaintMaterial:
+      m_Terrain->PaintMaterial(m_TerrainHitPoint.x, m_TerrainHitPoint.z,
+                               brush.radius, strength,
+                               m_TerrainPanel.GetSelectedMaterialLayer());
+      break;
+    default:
+      break;
+    }
+  }
 }
 
 } // namespace Gini

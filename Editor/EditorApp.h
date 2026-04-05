@@ -5,6 +5,7 @@
 #include "Panels/PropertiesPanel.h"
 #include "Panels/SceneHierarchyPanel.h"
 #include "Panels/StatsPanel.h"
+#include "Panels/TerrainEditorWindow.h"
 #include "Panels/TerrainPanel.h"
 #include "Renderer/Camera3D.h"
 #include "Renderer/Framebuffer.h"
@@ -39,6 +40,12 @@ private:
   bool RayIntersectsAABB(const Vec3 &rayOrigin, const Vec3 &rayDir,
                          const Vec3 &boxMin, const Vec3 &boxMax, float &t);
 
+  // Terrain painting
+  void HandleTerrainPainting(f32 deltaTime);
+  Vec3 ScreenToWorldRay(const Vec2 &screenPos);
+  Vec3 m_TerrainHitPoint = Vec3(0.0f);
+  bool m_TerrainHit = false;
+
   // Scene
   Ref<Scene> m_ActiveScene;
   Ref<Scene> m_EditorScene;
@@ -63,6 +70,7 @@ private:
 
   // Terrain
   Ref<Terrain> m_Terrain;
+  TerrainEditorWindow m_TerrainEditorWindow;
 
   // Editor state
   Entity m_SelectedEntity = NullEntity;

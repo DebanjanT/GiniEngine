@@ -1,8 +1,37 @@
 #include "TerrainPanel.h"
 #include "Core/Logger.h"
+#include <cstring>
 #include <imgui.h>
 
 namespace Gini {
+
+void TerrainPanel::SetTerrain(Ref<Terrain> terrain) {
+  m_Terrain = terrain;
+  SyncLayersToTerrain();
+}
+
+void TerrainPanel::SyncLayersToTerrain() {
+  if (!m_Terrain)
+    return;
+
+  // Ensure terrain has 4 layers
+  while (m_Terrain->GetLayerCount() < 4) {
+    TerrainLayer layer;
+    u32 idx = m_Terrain->GetLayerCount();
+    layer.name = m_LayerUI[idx].name;
+    layer.color = m_LayerUI[idx].color;
+    layer.tiling = Vec2(m_LayerUI[idx].tiling);
+    m_Terrain->AddLayer(layer);
+  }
+
+  // Update layer colors from UI
+  for (u32 i = 0; i < 4 && i < m_Terrain->GetLayerCount(); i++) {
+    auto &layer = m_Terrain->GetLayer(i);
+    layer.name = m_LayerUI[i].name;
+    layer.color = m_LayerUI[i].color;
+    layer.tiling = Vec2(m_LayerUI[i].tiling);
+  }
+}
 
 void TerrainPanel::OnImGuiRender() {
   ImGui::Begin("Terrain Editor");
@@ -128,36 +157,80 @@ void TerrainPanel::DrawBrushSettings() {
 }
 
 void TerrainPanel::DrawMaterialLayers() {
-  u32 layerCount = m_Terrain->GetLayerCount();
+  ImGui::Text("Material Layers (4 max for splatmap):");
+  ImGui::Separator();
 
-  if (layerCount == 0) {
-    ImGui::Text("No material layers");
-    if (ImGui::Button("Add Default Layer")) {
-      TerrainLayer layer;
-      layer.name = "Default";
-      m_Terrain->AddLayer(layer);
+  // Display all 4 layers
+  for (u32 i = 0; i < 4; i++) {
+    ImGui::PushID(i);
+
+    bool selected = (m_SelectedMaterialLayer == i);
+
+    // Layer header with color preview
+    ImVec4 col(m_LayerUI[i].color.x, m_LayerUI[i].color.y, m_LayerUI[i].color.z,
+               1.0f);
+    ImGui::ColorButton("##color", col, ImGuiColorEditFlags_NoTooltip,
+                       ImVec2(20, 20));
+    ImGui::SameLine();
+
+    char label[64];
+    snprintf(label, sizeof(label), "Layer %d: %s", i,
+             m_LayerUI[i].name.c_str());
+    if (ImGui::Selectable(label, selected)) {
+      m_SelectedMaterialLayer = i;
     }
-  } else {
-    for (u32 i = 0; i < layerCount; i++) {
-      ImGui::PushID(i);
 
-      auto &layer = m_Terrain->GetLayer(i);
-      bool selected = (m_SelectedMaterialLayer == i);
-      if (ImGui::Selectable(layer.name.c_str(), selected)) {
-        m_SelectedMaterialLayer = i;
+    ImGui::PopID();
+  }
+
+  ImGui::Separator();
+
+  // Edit selected layer
+  if (m_SelectedMaterialLayer < 4) {
+    TerrainLayerUI &layerUI = m_LayerUI[m_SelectedMaterialLayer];
+
+    ImGui::Text("Edit Layer %d:", m_SelectedMaterialLayer);
+
+    // Name input
+    char nameBuf[64];
+    strncpy(nameBuf, layerUI.name.c_str(), sizeof(nameBuf) - 1);
+    nameBuf[sizeof(nameBuf) - 1] = '\0';
+    if (ImGui::InputText("Name", nameBuf, sizeof(nameBuf))) {
+      layerUI.name = nameBuf;
+    }
+
+    // Color picker
+    float color[3] = {layerUI.color.x, layerUI.color.y, layerUI.color.z};
+    if (ImGui::ColorEdit3("Color", color)) {
+      layerUI.color = Vec3(color[0], color[1], color[2]);
+      SyncLayersToTerrain();
+    }
+
+    // Tiling
+    if (ImGui::DragFloat("Tiling", &layerUI.tiling, 0.5f, 1.0f, 100.0f)) {
+      SyncLayersToTerrain();
+    }
+
+    // Texture path (display only for now)
+    ImGui::Text("Texture: %s", layerUI.texturePath.empty()
+                                   ? "(none - using color)"
+                                   : layerUI.texturePath.c_str());
+
+    if (ImGui::Button("Load Texture...", ImVec2(-1, 0))) {
+      // TODO: File dialog for texture
+      GINI_INFO("Load texture dialog for layer {}", m_SelectedMaterialLayer);
+    }
+
+    if (!layerUI.texturePath.empty()) {
+      if (ImGui::Button("Clear Texture", ImVec2(-1, 0))) {
+        layerUI.texturePath = "";
       }
-
-      ImGui::PopID();
-    }
-
-    ImGui::Separator();
-
-    if (m_SelectedMaterialLayer < layerCount) {
-      auto &layer = m_Terrain->GetLayer(m_SelectedMaterialLayer);
-      ImGui::Text("Selected: %s", layer.name.c_str());
-      ImGui::DragFloat2("Tiling", &layer.tiling.x, 0.1f, 0.1f, 100.0f);
     }
   }
+
+  ImGui::Separator();
+  ImGui::TextDisabled("Click and drag on terrain to paint selected layer");
+  ImGui::TextDisabled("Hold Shift + Click to paint height");
 }
 
 void TerrainPanel::DrawGenerationSettings() {

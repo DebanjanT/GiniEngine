@@ -1,7 +1,12 @@
 #include "MaterialEditorPanel.h"
 #include "Core/Logger.h"
+#include "Project/Project.h"
+#include "Utils/FileDialog.h"
 #include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <imgui.h>
+#include <yaml-cpp/yaml.h>
 
 namespace Gini {
 
@@ -646,14 +651,81 @@ void MaterialEditorPanel::DrawNodeInspector() {
     ImGui::ColorEdit4("Value", &node->constantValue.x);
     break;
 
-  case MaterialNodeType::TextureSample:
+  case MaterialNodeType::TextureSample: {
     ImGui::Text("Texture: %s", node->texturePath.empty()
                                    ? "(none)"
                                    : node->texturePath.c_str());
+
+    // Show texture preview if loaded
+    if (node->texture) {
+      ImGui::Image((ImTextureID)(intptr_t)node->texture->GetID(),
+                   ImVec2(64, 64));
+    }
+
     if (ImGui::Button("Load Texture...")) {
-      // TODO: File dialog
+      std::vector<FileDialogFilter> filters = {{"Image Files", "png"},
+                                               {"Image Files", "jpg"},
+                                               {"Image Files", "jpeg"},
+                                               {"Image Files", "tga"},
+                                               {"Image Files", "bmp"}};
+
+      std::string filepath = FileDialog::OpenFile(filters);
+
+      if (!filepath.empty()) {
+        std::filesystem::path srcPath(filepath);
+        std::filesystem::path destPath;
+
+        // Check if file is already in project assets
+        auto activeProject = Project::GetActive();
+        if (activeProject) {
+          std::filesystem::path assetsPath =
+              activeProject->GetConfig().assetsPath;
+          std::filesystem::path texturesPath = assetsPath / "textures";
+
+          // Create textures directory if it doesn't exist
+          if (!std::filesystem::exists(texturesPath)) {
+            std::filesystem::create_directories(texturesPath);
+          }
+
+          // Check if file is already in assets
+          std::string srcPathStr = srcPath.string();
+          std::string assetsPathStr = assetsPath.string();
+
+          if (srcPathStr.find(assetsPathStr) == 0) {
+            // Already in assets, use relative path
+            destPath = srcPath;
+          } else {
+            // Copy to project textures folder
+            destPath = texturesPath / srcPath.filename();
+
+            try {
+              std::filesystem::copy_file(
+                  srcPath, destPath,
+                  std::filesystem::copy_options::overwrite_existing);
+              GINI_INFO("Copied texture to project: ", destPath.string());
+            } catch (const std::exception &e) {
+              GINI_ERROR("Failed to copy texture: ", e.what());
+              destPath = srcPath; // Use original path as fallback
+            }
+          }
+        } else {
+          destPath = srcPath;
+        }
+
+        // Load the texture
+        node->texturePath = destPath.string();
+        node->texture = Texture2D::Create(destPath.string());
+
+        if (node->texture) {
+          GINI_INFO("Loaded texture: ", destPath.string());
+          m_IsDirty = true;
+        } else {
+          GINI_ERROR("Failed to load texture: ", destPath.string());
+        }
+      }
     }
     break;
+  }
 
   default:
     ImGui::Text("No editable properties");
@@ -928,19 +1000,180 @@ void MaterialEditorPanel::SaveMaterial() {
   if (!m_Material)
     return;
 
+  // Compile the material first
   CompileMaterial();
 
-  // TODO: Save material to file
-  GINI_INFO("Material saved");
-  m_IsDirty = false;
+  // Get save path
+  auto activeProject = Project::GetActive();
+  std::filesystem::path savePath;
+
+  if (activeProject) {
+    std::filesystem::path materialsPath =
+        activeProject->GetConfig().materialsPath;
+    if (!std::filesystem::exists(materialsPath)) {
+      std::filesystem::create_directories(materialsPath);
+    }
+
+    // Use file dialog to get save location
+    std::vector<FileDialogFilter> filters = {{"Gini Material", "gmat"}};
+
+    std::string filepath =
+        FileDialog::SaveFile(filters, m_Material->GetName() + ".gmat");
+
+    if (filepath.empty()) {
+      return; // User cancelled
+    }
+
+    savePath = filepath;
+  } else {
+    GINI_WARN("No active project - material not saved");
+    return;
+  }
+
+  // Save material to YAML file
+  YAML::Emitter out;
+  out << YAML::BeginMap;
+  out << YAML::Key << "Material" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "Name" << YAML::Value << m_Material->GetName();
+
+  // Save material properties
+  out << YAML::Key << "Albedo" << YAML::Value << YAML::Flow << YAML::BeginSeq
+      << m_Material->GetAlbedo().x << m_Material->GetAlbedo().y
+      << m_Material->GetAlbedo().z << m_Material->GetAlbedo().w << YAML::EndSeq;
+  out << YAML::Key << "Roughness" << YAML::Value << m_Material->GetRoughness();
+  out << YAML::Key << "Metallic" << YAML::Value << m_Material->GetMetallic();
+
+  // Save texture paths
+  if (m_Material->GetAlbedoTexture()) {
+    out << YAML::Key << "AlbedoTexture" << YAML::Value
+        << m_Material->GetAlbedoTexturePath();
+  }
+  if (m_Material->GetNormalTexture()) {
+    out << YAML::Key << "NormalTexture" << YAML::Value
+        << m_Material->GetNormalTexturePath();
+  }
+
+  // Save node graph
+  out << YAML::Key << "Nodes" << YAML::Value << YAML::BeginSeq;
+  for (const auto &node : m_Nodes) {
+    out << YAML::BeginMap;
+    out << YAML::Key << "ID" << YAML::Value << node.id;
+    out << YAML::Key << "Type" << YAML::Value << (int)node.type;
+    out << YAML::Key << "Name" << YAML::Value << node.name;
+    out << YAML::Key << "Position" << YAML::Value << YAML::Flow
+        << YAML::BeginSeq << node.position.x << node.position.y << YAML::EndSeq;
+
+    if (node.type == MaterialNodeType::Constant) {
+      out << YAML::Key << "ConstantValue" << YAML::Value << YAML::Flow
+          << YAML::BeginSeq << node.constantValue.x << node.constantValue.y
+          << node.constantValue.z << node.constantValue.w << YAML::EndSeq;
+    }
+    if (node.type == MaterialNodeType::TextureSample &&
+        !node.texturePath.empty()) {
+      out << YAML::Key << "TexturePath" << YAML::Value << node.texturePath;
+    }
+    out << YAML::EndMap;
+  }
+  out << YAML::EndSeq;
+
+  // Save connections
+  out << YAML::Key << "Connections" << YAML::Value << YAML::BeginSeq;
+  for (const auto &conn : m_Connections) {
+    out << YAML::BeginMap;
+    out << YAML::Key << "OutputNode" << YAML::Value << conn.outputNodeId;
+    out << YAML::Key << "OutputPin" << YAML::Value << conn.outputPinId;
+    out << YAML::Key << "InputNode" << YAML::Value << conn.inputNodeId;
+    out << YAML::Key << "InputPin" << YAML::Value << conn.inputPinId;
+    out << YAML::EndMap;
+  }
+  out << YAML::EndSeq;
+
+  out << YAML::EndMap; // Material
+  out << YAML::EndMap; // Root
+
+  std::ofstream fout(savePath);
+  if (fout.is_open()) {
+    fout << out.c_str();
+    fout.close();
+    GINI_INFO("Material saved to: ", savePath.string());
+    m_IsDirty = false;
+  } else {
+    GINI_ERROR("Failed to save material to: ", savePath.string());
+  }
 }
 
 void MaterialEditorPanel::CompileMaterial() {
   if (!m_Material)
     return;
 
-  // TODO: Compile node graph to material properties
-  GINI_INFO("Material compiled");
+  GINI_INFO("Compiling material...");
+
+  // Find the output node
+  MaterialNode *outputNode = nullptr;
+  for (auto &node : m_Nodes) {
+    if (node.type == MaterialNodeType::Output) {
+      outputNode = &node;
+      break;
+    }
+  }
+
+  if (!outputNode) {
+    GINI_WARN("No output node found in material graph");
+    return;
+  }
+
+  // Process each input pin of the output node
+  for (const auto &pin : outputNode->inputs) {
+    // Find connection to this pin
+    NodeConnection *conn = nullptr;
+    for (auto &c : m_Connections) {
+      if (c.inputNodeId == outputNode->id && c.inputPinId == pin.id) {
+        conn = &c;
+        break;
+      }
+    }
+
+    if (!conn)
+      continue;
+
+    // Find the source node
+    MaterialNode *sourceNode = FindNode(conn->outputNodeId);
+    if (!sourceNode)
+      continue;
+
+    // Apply based on pin name
+    if (pin.name == "Base Color") {
+      if (sourceNode->type == MaterialNodeType::TextureSample &&
+          sourceNode->texture) {
+        m_Material->SetAlbedoTexture(sourceNode->texture);
+        m_Material->SetAlbedoTexturePath(sourceNode->texturePath);
+        GINI_INFO("Set albedo texture from node");
+      } else if (sourceNode->type == MaterialNodeType::Constant) {
+        Vec4 color = sourceNode->constantValue;
+        m_Material->SetAlbedo(color);
+        GINI_INFO("Set albedo color: ", color.x, ", ", color.y, ", ", color.z);
+      }
+    } else if (pin.name == "Normal") {
+      if (sourceNode->type == MaterialNodeType::TextureSample &&
+          sourceNode->texture) {
+        m_Material->SetNormalTexture(sourceNode->texture);
+        m_Material->SetNormalTexturePath(sourceNode->texturePath);
+        GINI_INFO("Set normal texture from node");
+      }
+    } else if (pin.name == "Roughness") {
+      if (sourceNode->type == MaterialNodeType::Constant) {
+        m_Material->SetRoughness(sourceNode->constantValue.x);
+        GINI_INFO("Set roughness: ", sourceNode->constantValue.x);
+      }
+    } else if (pin.name == "Metallic") {
+      if (sourceNode->type == MaterialNodeType::Constant) {
+        m_Material->SetMetallic(sourceNode->constantValue.x);
+        GINI_INFO("Set metallic: ", sourceNode->constantValue.x);
+      }
+    }
+  }
+
+  GINI_INFO("Material compiled successfully");
 }
 
 } // namespace Gini

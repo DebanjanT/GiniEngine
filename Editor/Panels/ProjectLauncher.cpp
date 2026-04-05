@@ -1,5 +1,6 @@
 #include "ProjectLauncher.h"
 #include "Core/Logger.h"
+#include "Utils/FileDialog.h"
 #include <cstring>
 #include <ctime>
 #include <fstream>
@@ -383,37 +384,13 @@ void ProjectLauncher::OpenProject(const std::filesystem::path &path) {
 }
 
 void ProjectLauncher::OpenProjectDialog() {
-  // For now, we'll use a simple path input
-  // In a real implementation, you'd use a native file dialog
-  // For macOS: NSOpenPanel, for Windows: GetOpenFileName
+  // Use native file dialog to select .giniproject file
+  std::vector<FileDialogFilter> filters = {{"Gini Project", "giniproject"}};
 
-  // Simple workaround: show an input dialog
-  static char pathBuffer[512] = "";
+  std::string filepath = FileDialog::OpenFile(filters);
 
-  ImGui::OpenPopup("Open Project");
-
-  if (ImGui::BeginPopupModal("Open Project", nullptr,
-                             ImGuiWindowFlags_AlwaysAutoResize)) {
-    ImGui::Text("Enter project path or .giniproject file:");
-    ImGui::SetNextItemWidth(400);
-    ImGui::InputText("##OpenPath", pathBuffer, sizeof(pathBuffer));
-
-    ImGui::Spacing();
-
-    if (ImGui::Button("Open", ImVec2(100, 30))) {
-      if (strlen(pathBuffer) > 0) {
-        OpenProject(pathBuffer);
-        pathBuffer[0] = '\0';
-      }
-      ImGui::CloseCurrentPopup();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(100, 30))) {
-      pathBuffer[0] = '\0';
-      ImGui::CloseCurrentPopup();
-    }
-
-    ImGui::EndPopup();
+  if (!filepath.empty()) {
+    OpenProject(filepath);
   }
 }
 

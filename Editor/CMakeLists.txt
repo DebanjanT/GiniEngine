@@ -11,6 +11,7 @@ set(EDITOR_SOURCES
     Panels/AssetBrowserPanel.cpp
     Panels/MaterialEditorPanel.cpp
     Panels/ProjectLauncher.cpp
+    Utils/FileDialog.mm
 )
 
 set(EDITOR_HEADERS
@@ -25,6 +26,7 @@ set(EDITOR_HEADERS
     Panels/AssetBrowserPanel.h
     Panels/MaterialEditorPanel.h
     Panels/ProjectLauncher.h
+    Utils/FileDialog.h
 )
 
 add_executable(GiniEditor ${EDITOR_SOURCES} ${EDITOR_HEADERS})
@@ -37,6 +39,11 @@ target_include_directories(GiniEditor PRIVATE
 target_link_libraries(GiniEditor PRIVATE
     GiniEngine
 )
+
+# Link Cocoa framework for native file dialogs on macOS
+if(APPLE)
+    target_link_libraries(GiniEditor PRIVATE "-framework Cocoa")
+endif()
 
 set_target_properties(GiniEditor PROPERTIES
     CXX_STANDARD 20

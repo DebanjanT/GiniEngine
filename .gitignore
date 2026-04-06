@@ -6,6 +6,7 @@
 # Build directories
 # ===========================================
 reference
+reference/
 build/
 build_*/
 out/

@@ -7,6 +7,7 @@
 #include "Panels/ProjectLauncher.h"
 #include "Panels/PropertiesPanel.h"
 #include "Panels/SceneHierarchyPanel.h"
+#include "Panels/ScenePropertiesPanel.h"
 #include "Panels/StatsPanel.h"
 #include "Panels/TerrainEditorWindow.h"
 #include "Panels/TerrainPanel.h"
@@ -80,6 +81,9 @@ private:
   AssetBrowserPanel m_AssetBrowserPanel;
   MaterialEditorPanel m_MaterialEditorPanel;
 
+  // Scene Properties
+  ScenePropertiesPanel m_ScenePropertiesPanel;
+
   // Project Launcher
   ProjectLauncher m_ProjectLauncher;
   Ref<Project> m_ActiveProject;
@@ -98,6 +102,9 @@ private:
   float m_SnapTranslate = 0.5f;
   float m_SnapRotate = 45.0f;
   float m_SnapScale = 0.5f;
+
+  // Delta time for terrain painting (stored from OnUpdate)
+  f32 m_DeltaTime = 0.0f;
 };
 
 } // namespace Gini

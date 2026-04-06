@@ -11,6 +11,7 @@ set(EDITOR_SOURCES
     Panels/AssetBrowserPanel.cpp
     Panels/MaterialEditorPanel.cpp
     Panels/ProjectLauncher.cpp
+    Panels/ScenePropertiesPanel.cpp
     Utils/FileDialog.mm
 )
 
@@ -26,6 +27,7 @@ set(EDITOR_HEADERS
     Panels/AssetBrowserPanel.h
     Panels/MaterialEditorPanel.h
     Panels/ProjectLauncher.h
+    Panels/ScenePropertiesPanel.h
     Utils/FileDialog.h
 )
 

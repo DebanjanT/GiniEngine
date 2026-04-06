@@ -99,11 +99,35 @@ public:
   // Serialization
   void SaveHeightmap(const std::string &filepath);
   void SaveSplatmap(const std::string &filepath);
+  void SaveTerrain(const std::string &filepath);
+  void LoadTerrain(const std::string &filepath);
+
+  // Unified terrain export - exports all files to a folder
+  // Creates: basecolor.jpg, heightmap.jpg, normal.jpg, roughness.jpg,
+  //          ambientocclusion.jpg, metallic.jpg, terrain.obj, terrain.mtl,
+  //          terrain.gmat, terrain.gterrain
+  void ExportTerrain(const std::string &exportFolder,
+                     const std::string &terrainName);
 
   static Ref<Terrain> Create(u32 width = 256, u32 height = 256,
                              f32 scale = 1.0f);
 
 private:
+  // Export helper functions
+  void ExportBaseColorTexture(const std::string &filepath);
+  void ExportHeightmapTexture(const std::string &filepath);
+  void ExportNormalTexture(const std::string &filepath);
+  void ExportRoughnessTexture(const std::string &filepath);
+  void ExportAOTexture(const std::string &filepath);
+  void ExportMetallicTexture(const std::string &filepath);
+  void ExportOBJMesh(const std::string &filepath);
+  void ExportMTLFile(const std::string &filepath,
+                     const std::string &terrainName);
+  void ExportGMATFile(const std::string &filepath,
+                      const std::string &terrainName);
+  void ExportGTerrainFile(const std::string &filepath,
+                          const std::string &terrainName);
+
   void InitShader();
   void CreateMesh();
   void CreateChunks();

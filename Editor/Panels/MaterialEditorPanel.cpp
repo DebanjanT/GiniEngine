@@ -1,10 +1,12 @@
 #include "MaterialEditorPanel.h"
 #include "Core/Logger.h"
 #include "Project/Project.h"
+#include "Renderer/Renderer3D.h"
 #include "Utils/FileDialog.h"
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <glad/gl.h>
 #include <imgui.h>
 #include <yaml-cpp/yaml.h>
 
@@ -41,7 +43,16 @@ void MaterialEditorPanel::OnImGuiRender() {
       ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
       ImGuiWindowFlags_NoMove;
 
-  if (ImGui::Begin("Material Editor", &m_Visible, mainWindowFlags)) {
+  // Build window title with material name
+  std::string windowTitle = "Material Editor";
+  if (m_Material) {
+    windowTitle += " - " + m_Material->GetName();
+    if (m_IsDirty) {
+      windowTitle += "*";
+    }
+  }
+
+  if (ImGui::Begin(windowTitle.c_str(), &m_Visible, mainWindowFlags)) {
     ImGui::PopStyleVar(); // Pop WindowPadding
 
     DrawMenuBar();
@@ -103,14 +114,26 @@ void MaterialEditorPanel::DrawMenuBar() {
       if (ImGui::MenuItem("New Material")) {
         NewMaterial();
       }
-      if (ImGui::MenuItem("Open Material...")) {
-        // TODO: File dialog
+      if (ImGui::MenuItem("Open Material...", "Ctrl+O")) {
+        std::vector<FileDialogFilter> filters = {{"Gini Material", "gmat"}};
+        std::string filepath = FileDialog::OpenFile(filters);
+        if (!filepath.empty()) {
+          LoadMaterialFromFile(filepath);
+        }
       }
       if (ImGui::MenuItem("Save", "Ctrl+S")) {
         SaveMaterial();
       }
       if (ImGui::MenuItem("Save As...")) {
-        // TODO: File dialog
+        std::vector<FileDialogFilter> filters = {{"Gini Material", "gmat"}};
+        std::string filepath = FileDialog::SaveFile(filters);
+        if (!filepath.empty()) {
+          if (filepath.find(".gmat") == std::string::npos) {
+            filepath += ".gmat";
+          }
+          m_MaterialPath = filepath;
+          SaveMaterial();
+        }
       }
       ImGui::Separator();
       if (ImGui::MenuItem("Close")) {
@@ -477,6 +500,16 @@ void MaterialEditorPanel::HandleNodeInteraction() {
   if (!inCanvas)
     return;
 
+  // Delete selected node with Delete or Backspace key
+  if (m_SelectedNodeId != 0 && (ImGui::IsKeyPressed(ImGuiKey_Delete) ||
+                                ImGui::IsKeyPressed(ImGuiKey_Backspace))) {
+    MaterialNode *node = FindNode(m_SelectedNodeId);
+    if (node && node->type != MaterialNodeType::Output) {
+      DeleteNode(m_SelectedNodeId);
+      m_SelectedNodeId = 0;
+    }
+  }
+
   // Pan view with middle mouse or right mouse
   if (ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
     ImVec2 delta = ImGui::GetMouseDragDelta(ImGuiMouseButton_Middle);
@@ -645,6 +678,32 @@ void MaterialEditorPanel::DrawNodeInspector() {
   ImGui::Text("Type: %s", GetNodeTypeName(node->type));
   ImGui::Separator();
 
+  // Rename node (not for Output node)
+  if (node->type != MaterialNodeType::Output) {
+    char nameBuffer[256];
+    strncpy(nameBuffer, node->name.c_str(), sizeof(nameBuffer) - 1);
+    nameBuffer[sizeof(nameBuffer) - 1] = '\0';
+
+    if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
+      node->name = nameBuffer;
+      m_IsDirty = true;
+    }
+
+    // Delete node button
+    ImGui::Separator();
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                          ImVec4(0.9f, 0.3f, 0.3f, 1.0f));
+    if (ImGui::Button("Delete Node", ImVec2(-1, 0))) {
+      DeleteNode(node->id);
+      m_SelectedNodeId = 0;
+      ImGui::PopStyleColor(2);
+      return;
+    }
+    ImGui::PopStyleColor(2);
+    ImGui::Separator();
+  }
+
   // Node-specific properties
   switch (node->type) {
   case MaterialNodeType::Constant:
@@ -736,11 +795,43 @@ void MaterialEditorPanel::DrawNodeInspector() {
 void MaterialEditorPanel::DrawPreview() {
   ImVec2 previewSize(200, 200);
 
-  // Render preview sphere
-  // TODO: Render material preview
+  // Render material preview to framebuffer
+  if (m_PreviewFramebuffer && m_Material) {
+    m_PreviewFramebuffer->Bind();
 
-  // For now, just show a placeholder
-  ImGui::Button("Preview", previewSize);
+    glViewport(0, 0, 256, 256);
+    glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST);
+
+    // Update preview camera
+    float radians = glm::radians(m_PreviewRotation);
+    Vec3 camPos = Vec3(sin(radians) * 3.0f, 1.0f, cos(radians) * 3.0f);
+    m_PreviewCamera->SetPosition(camPos);
+    m_PreviewCamera->LookAt(Vec3(0, 0, 0));
+
+    // Render a sphere with the material color
+    Renderer3D::BeginScene(*m_PreviewCamera);
+
+    // Get material albedo color for preview
+    Vec4 albedo = m_Material->GetAlbedo();
+    Color previewColor(albedo.r, albedo.g, albedo.b, albedo.a);
+
+    // Draw sphere at origin with material color
+    Renderer3D::DrawSphere(Vec3(0, 0, 0), 1.0f, previewColor);
+
+    Renderer3D::EndScene();
+
+    m_PreviewFramebuffer->Unbind();
+
+    // Display the preview texture
+    u32 textureID = m_PreviewFramebuffer->GetColorAttachment();
+    ImGui::Image((ImTextureID)(intptr_t)textureID, previewSize, ImVec2(0, 1),
+                 ImVec2(1, 0));
+  } else {
+    // Placeholder if no material
+    ImGui::Button("Preview", previewSize);
+  }
 
   // Rotation slider
   ImGui::SliderFloat("Rotation", &m_PreviewRotation, 0.0f, 360.0f);
@@ -983,6 +1074,170 @@ void MaterialEditorPanel::OpenMaterial(Ref<Material> material) {
   m_Visible = true;
 }
 
+void MaterialEditorPanel::LoadMaterialFromFile(const std::string &filepath) {
+  try {
+    YAML::Node data = YAML::LoadFile(filepath);
+    if (!data["Material"]) {
+      GINI_ERROR("Invalid material file: {}", filepath);
+      return;
+    }
+
+    auto matData = data["Material"];
+
+    // Create new material
+    std::string name =
+        matData["Name"] ? matData["Name"].as<std::string>() : "Loaded Material";
+    m_Material = Material::Create(name);
+    m_MaterialPath = filepath;
+
+    // Load material properties
+    if (matData["Albedo"]) {
+      auto albedo = matData["Albedo"];
+      if (albedo.IsSequence() && albedo.size() >= 3) {
+        Vec4 color(albedo[0].as<float>(), albedo[1].as<float>(),
+                   albedo[2].as<float>(),
+                   albedo.size() > 3 ? albedo[3].as<float>() : 1.0f);
+        m_Material->SetAlbedo(color);
+      }
+    }
+    if (matData["Roughness"]) {
+      m_Material->SetRoughness(matData["Roughness"].as<float>());
+    }
+    if (matData["Metallic"]) {
+      m_Material->SetMetallic(matData["Metallic"].as<float>());
+    }
+
+    // Load textures
+    if (matData["AlbedoTexture"]) {
+      std::string texPath = matData["AlbedoTexture"].as<std::string>();
+      if (std::filesystem::exists(texPath)) {
+        m_Material->SetAlbedoTexture(Texture2D::Create(texPath));
+        m_Material->SetAlbedoTexturePath(texPath);
+      }
+    }
+    if (matData["NormalTexture"]) {
+      std::string texPath = matData["NormalTexture"].as<std::string>();
+      if (std::filesystem::exists(texPath)) {
+        m_Material->SetNormalTexture(Texture2D::Create(texPath));
+        m_Material->SetNormalTexturePath(texPath);
+      }
+    }
+
+    // Reset node graph
+    m_Nodes.clear();
+    m_Connections.clear();
+    m_NextId = 1;
+
+    // Load nodes from file
+    if (matData["Nodes"]) {
+      u32 maxId = 0;
+      for (const auto &nodeData : matData["Nodes"]) {
+        u32 id = nodeData["ID"].as<u32>();
+        int typeInt = nodeData["Type"].as<int>();
+        MaterialNodeType type = static_cast<MaterialNodeType>(typeInt);
+        std::string nodeName = nodeData["Name"].as<std::string>();
+
+        Vec2 position(0, 0);
+        if (nodeData["Position"]) {
+          auto pos = nodeData["Position"];
+          position = Vec2(pos[0].as<float>(), pos[1].as<float>());
+        }
+
+        // Create the node with proper type
+        MaterialNode *node = CreateNode(type, position);
+        if (node) {
+          // Override the auto-generated ID with the saved ID
+          node->id = id;
+          node->name = nodeName;
+
+          // Load node-specific data
+          if (type == MaterialNodeType::Constant && nodeData["ConstantValue"]) {
+            auto cv = nodeData["ConstantValue"];
+            node->constantValue = Vec4(cv[0].as<float>(), cv[1].as<float>(),
+                                       cv[2].as<float>(), cv[3].as<float>());
+          }
+          if (type == MaterialNodeType::TextureSample &&
+              nodeData["TexturePath"]) {
+            node->texturePath = nodeData["TexturePath"].as<std::string>();
+            if (std::filesystem::exists(node->texturePath)) {
+              node->texture = Texture2D::Create(node->texturePath);
+            }
+          }
+
+          // Restore input pin IDs
+          if (nodeData["InputPins"]) {
+            auto inputPins = nodeData["InputPins"];
+            for (size_t i = 0; i < inputPins.size() && i < node->inputs.size();
+                 i++) {
+              u32 pinId = inputPins[i].as<u32>();
+              node->inputs[i].id = pinId;
+              if (pinId > maxId)
+                maxId = pinId;
+            }
+          }
+
+          // Restore output pin IDs
+          if (nodeData["OutputPins"]) {
+            auto outputPins = nodeData["OutputPins"];
+            for (size_t i = 0;
+                 i < outputPins.size() && i < node->outputs.size(); i++) {
+              u32 pinId = outputPins[i].as<u32>();
+              node->outputs[i].id = pinId;
+              if (pinId > maxId)
+                maxId = pinId;
+            }
+          }
+
+          if (id > maxId)
+            maxId = id;
+        }
+      }
+      m_NextId = maxId + 1;
+    } else {
+      // No saved nodes, create default output node
+      CreateNode(MaterialNodeType::Output, Vec2(500, 200));
+    }
+
+    // Load connections
+    if (matData["Connections"]) {
+      for (const auto &connData : matData["Connections"]) {
+        u32 outputNodeId = connData["OutputNode"].as<u32>();
+        u32 outputPinId = connData["OutputPin"].as<u32>();
+        u32 inputNodeId = connData["InputNode"].as<u32>();
+        u32 inputPinId = connData["InputPin"].as<u32>();
+
+        // Find the nodes and update pin connections
+        MaterialNode *inputNode = FindNode(inputNodeId);
+        if (inputNode) {
+          for (auto &pin : inputNode->inputs) {
+            if (pin.id == inputPinId) {
+              pin.connectedNodeId = outputNodeId;
+              pin.connectedPinId = outputPinId;
+              break;
+            }
+          }
+        }
+
+        // Add connection
+        NodeConnection conn;
+        conn.outputNodeId = outputNodeId;
+        conn.outputPinId = outputPinId;
+        conn.inputNodeId = inputNodeId;
+        conn.inputPinId = inputPinId;
+        m_Connections.push_back(conn);
+      }
+    }
+
+    m_IsDirty = false;
+    m_Visible = true;
+
+    GINI_INFO("Loaded material: {}", filepath);
+
+  } catch (const std::exception &e) {
+    GINI_ERROR("Failed to load material: {}", e.what());
+  }
+}
+
 void MaterialEditorPanel::NewMaterial() {
   m_Material = Material::Create("New Material");
   m_Nodes.clear();
@@ -1072,6 +1327,23 @@ void MaterialEditorPanel::SaveMaterial() {
         !node.texturePath.empty()) {
       out << YAML::Key << "TexturePath" << YAML::Value << node.texturePath;
     }
+
+    // Save input pin IDs
+    out << YAML::Key << "InputPins" << YAML::Value << YAML::Flow
+        << YAML::BeginSeq;
+    for (const auto &pin : node.inputs) {
+      out << pin.id;
+    }
+    out << YAML::EndSeq;
+
+    // Save output pin IDs
+    out << YAML::Key << "OutputPins" << YAML::Value << YAML::Flow
+        << YAML::BeginSeq;
+    for (const auto &pin : node.outputs) {
+      out << pin.id;
+    }
+    out << YAML::EndSeq;
+
     out << YAML::EndMap;
   }
   out << YAML::EndSeq;

@@ -160,6 +160,13 @@ void SceneSerializer::Serialize(const std::string &filepath) {
   YAML::Emitter out;
   out << YAML::BeginMap;
   out << YAML::Key << "Scene" << YAML::Value << m_Scene->GetName();
+
+  // Save terrain path if scene has terrain
+  if (m_Scene->HasTerrain() && !m_Scene->GetTerrainPath().empty()) {
+    out << YAML::Key << "TerrainPath" << YAML::Value
+        << m_Scene->GetTerrainPath();
+  }
+
   out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
 
   auto &world = m_Scene->GetWorld();
@@ -230,6 +237,12 @@ bool SceneSerializer::DeserializeFromString(const std::string &yamlString) {
   // Clear existing entities
   m_Scene->Clear();
   m_Scene->SetName(sceneName);
+
+  // Load terrain if path is specified
+  if (data["TerrainPath"]) {
+    std::string terrainPath = data["TerrainPath"].as<std::string>();
+    m_Scene->LoadTerrainFromFile(terrainPath);
+  }
 
   auto entities = data["Entities"];
   if (entities) {

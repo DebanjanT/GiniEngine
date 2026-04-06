@@ -249,4 +249,17 @@ void SceneManager::UnloadScene(Ref<Scene> scene) {
 
 void SceneManager::SetActiveScene(Ref<Scene> scene) { m_ActiveScene = scene; }
 
+void Scene::LoadTerrainFromFile(const std::string &filepath) {
+  if (filepath.empty()) {
+    return;
+  }
+
+  // Create terrain and load from file
+  m_Terrain = Terrain::Create();
+  m_Terrain->LoadTerrain(filepath);
+  m_TerrainPath = filepath;
+
+  GINI_INFO("Loaded terrain for scene: {}", filepath);
+}
+
 } // namespace Gini

@@ -96,6 +96,9 @@ private:
 
   // Layout reset flag
   bool m_NeedsLayoutReset = true;
+
+  // Delta time for painting (stored from OnUpdate)
+  f32 m_DeltaTime = 0.0f;
 };
 
 } // namespace Gini

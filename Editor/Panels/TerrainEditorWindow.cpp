@@ -68,6 +68,7 @@ void TerrainEditorWindow::Close() {
 
 void TerrainEditorWindow::CreateNewTerrain() {
   m_Terrain = Terrain::Create(m_TerrainWidth, m_TerrainHeight, m_TerrainScale);
+  m_Terrain->SetHeightScale(m_TerrainMaxHeight);
   m_Terrain->GenerateFlat();
 
   // Add 4 layers with materials
@@ -81,15 +82,17 @@ void TerrainEditorWindow::CreateNewTerrain() {
     m_Terrain->AddLayer(layer);
   }
 
-  GINI_INFO("Created new terrain {}x{}", m_TerrainWidth, m_TerrainHeight);
+  GINI_INFO("Created new terrain {}x{} with height scale {}", m_TerrainWidth,
+            m_TerrainHeight, m_TerrainMaxHeight);
 }
 
 void TerrainEditorWindow::OnUpdate(f32 deltaTime) {
   if (!m_IsOpen)
     return;
 
+  m_DeltaTime = deltaTime;
   m_CameraController->OnUpdate(deltaTime);
-  HandlePainting(deltaTime);
+  // HandlePainting is called in DrawViewport after viewport bounds are set
 }
 
 void TerrainEditorWindow::OnImGuiRender() {
@@ -249,15 +252,6 @@ void TerrainEditorWindow::DrawViewport() {
     return;
   }
 
-  // Store viewport bounds for mouse picking
-  ImVec2 viewportMinRegion = ImGui::GetWindowContentRegionMin();
-  ImVec2 viewportMaxRegion = ImGui::GetWindowContentRegionMax();
-  ImVec2 viewportOffset = ImGui::GetWindowPos();
-  m_ViewportBounds[0] = Vec2(viewportMinRegion.x + viewportOffset.x,
-                             viewportMinRegion.y + viewportOffset.y);
-  m_ViewportBounds[1] = Vec2(viewportMaxRegion.x + viewportOffset.x,
-                             viewportMaxRegion.y + viewportOffset.y);
-
   // Render terrain to framebuffer
   m_Framebuffer->Bind();
   Renderer3D::SetViewport(0, 0, static_cast<u32>(m_ViewportSize.x),
@@ -309,8 +303,17 @@ void TerrainEditorWindow::DrawViewport() {
 
   // Display framebuffer texture
   u32 textureID = m_Framebuffer->GetColorAttachment();
+  ImVec2 imagePos = ImGui::GetCursorScreenPos();
   ImGui::Image((ImTextureID)(intptr_t)textureID, viewportPanelSize,
                ImVec2(0, 1), ImVec2(1, 0));
+
+  // Store viewport bounds for mouse picking (after image is placed)
+  m_ViewportBounds[0] = Vec2(imagePos.x, imagePos.y);
+  m_ViewportBounds[1] =
+      Vec2(imagePos.x + viewportPanelSize.x, imagePos.y + viewportPanelSize.y);
+
+  // Handle painting now that viewport bounds are set correctly
+  HandlePainting(m_DeltaTime);
 
   // Handle camera controls
   if (m_ViewportHovered || m_ViewportFocused) {
@@ -776,22 +779,42 @@ void TerrainEditorWindow::SaveTerrain() {
   if (!m_Terrain)
     return;
 
-  // Save heightmap
-  m_Terrain->SaveHeightmap("terrain_heightmap.png");
+  std::vector<FileDialogFilter> filters = {{"Gini Terrain", "gterrain"}};
 
-  // Save splatmap
-  m_Terrain->SaveSplatmap("terrain_splatmap.png");
+  std::string filepath = FileDialog::SaveFile(filters);
+  if (filepath.empty())
+    return;
 
-  GINI_INFO("Terrain saved!");
+  // Ensure .gterrain extension
+  if (filepath.find(".gterrain") == std::string::npos) {
+    filepath += ".gterrain";
+  }
+
+  m_Terrain->SaveTerrain(filepath);
+  m_CurrentFilePath = filepath;
 }
 
 void TerrainEditorWindow::ExportTerrain() {
   if (!m_Terrain)
     return;
 
-  // Export as OBJ file
-  // This would export the terrain mesh with UV coordinates
-  GINI_INFO("Terrain export to OBJ - Coming soon!");
+  // Use folder dialog - user selects export folder
+  std::vector<FileDialogFilter> filters = {};
+  std::string filepath = FileDialog::SaveFile(filters, "terrain_export");
+  if (filepath.empty())
+    return;
+
+  // Extract folder and terrain name from path
+  std::filesystem::path path(filepath);
+  std::string exportFolder = path.parent_path().string();
+  std::string terrainName = path.stem().string();
+
+  if (terrainName.empty()) {
+    terrainName = "terrain";
+  }
+
+  // Unified export - creates all files in the folder
+  m_Terrain->ExportTerrain(exportFolder, terrainName);
 }
 
 } // namespace Gini

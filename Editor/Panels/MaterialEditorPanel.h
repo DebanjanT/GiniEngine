@@ -73,6 +73,7 @@ public:
   void OnImGuiRender() override;
 
   void OpenMaterial(Ref<Material> material);
+  void LoadMaterialFromFile(const std::string &filepath);
   void NewMaterial();
   void SaveMaterial();
   void CompileMaterial();

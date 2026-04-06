@@ -57,6 +57,7 @@ void EditorApp::OnInit() {
   });
 
   m_PropertiesPanel.SetScene(m_ActiveScene);
+  m_ScenePropertiesPanel.SetScene(m_ActiveScene);
 
   // Create default terrain
   m_Terrain = Terrain::Create(128, 128, 50.0f);
@@ -96,8 +97,9 @@ void EditorApp::OnUpdate(f32 deltaTime) {
 
   m_CameraController->OnUpdate(deltaTime);
 
-  // Handle terrain painting
-  HandleTerrainPainting(deltaTime);
+  // Store deltaTime for terrain painting (called in DrawViewport after bounds
+  // are set)
+  m_DeltaTime = deltaTime;
 
   // Update terrain editor window
   m_TerrainEditorWindow.OnUpdate(deltaTime);
@@ -119,8 +121,11 @@ void EditorApp::OnRender() {
   // Render scene
   Renderer3D::BeginScene(*m_EditorCamera);
 
-  // Render terrain if exists
-  if (m_Terrain) {
+  // Render terrain - prefer scene terrain if linked, otherwise use editor
+  // terrain
+  if (m_ActiveScene && m_ActiveScene->HasTerrain()) {
+    m_ActiveScene->GetTerrain()->Render(*m_EditorCamera);
+  } else if (m_Terrain) {
     m_Terrain->Render(*m_EditorCamera);
   }
 
@@ -250,6 +255,7 @@ void EditorApp::OnRender() {
     m_ConsolePanel.OnImGuiRender();
     m_TerrainPanel.OnImGuiRender();
     m_AssetBrowserPanel.OnImGuiRender();
+    m_ScenePropertiesPanel.OnImGuiRender();
   }
 
   if (m_ShowDemoWindow) {
@@ -444,6 +450,8 @@ void EditorApp::DrawMenuBar() {
     if (ImGui::BeginMenu("View")) {
       ImGui::MenuItem("Scene Hierarchy", nullptr, &m_HierarchyPanel.m_Visible);
       ImGui::MenuItem("Properties", nullptr, &m_PropertiesPanel.m_Visible);
+      ImGui::MenuItem("Scene Properties", nullptr,
+                      &m_ScenePropertiesPanel.m_Visible);
       ImGui::MenuItem("Stats", nullptr, &m_StatsPanel.m_Visible);
       ImGui::MenuItem("Console", nullptr, &m_ConsolePanel.m_Visible);
       ImGui::MenuItem("Asset Browser", nullptr, &m_AssetBrowserPanel.m_Visible);
@@ -524,14 +532,6 @@ void EditorApp::DrawViewport() {
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 0));
   ImGui::Begin("Viewport");
 
-  auto viewportMinRegion = ImGui::GetWindowContentRegionMin();
-  auto viewportMaxRegion = ImGui::GetWindowContentRegionMax();
-  auto viewportOffset = ImGui::GetWindowPos();
-  m_ViewportBounds[0] = {viewportMinRegion.x + viewportOffset.x,
-                         viewportMinRegion.y + viewportOffset.y};
-  m_ViewportBounds[1] = {viewportMaxRegion.x + viewportOffset.x,
-                         viewportMaxRegion.y + viewportOffset.y};
-
   m_ViewportFocused = ImGui::IsWindowFocused();
   m_ViewportHovered = ImGui::IsWindowHovered();
 
@@ -545,9 +545,18 @@ void EditorApp::DrawViewport() {
   }
 
   u32 textureID = m_Framebuffer->GetColorAttachment();
+  ImVec2 imagePos = ImGui::GetCursorScreenPos();
   ImGui::Image((void *)(intptr_t)textureID,
                ImVec2(m_ViewportSize.x, m_ViewportSize.y), ImVec2(0, 1),
                ImVec2(1, 0));
+
+  // Store viewport bounds for mouse picking (after image is placed)
+  m_ViewportBounds[0] = {imagePos.x, imagePos.y};
+  m_ViewportBounds[1] = {imagePos.x + m_ViewportSize.x,
+                         imagePos.y + m_ViewportSize.y};
+
+  // Handle terrain painting now that viewport bounds are set correctly
+  HandleTerrainPainting(m_DeltaTime);
 
   // ImGuizmo
   if (m_SelectedEntity != NullEntity && m_ActiveScene) {
@@ -622,6 +631,7 @@ void EditorApp::NewScene() {
   m_ActiveScene = CreateRef<Scene>("Untitled Scene");
   m_HierarchyPanel.SetScene(m_ActiveScene);
   m_PropertiesPanel.SetScene(m_ActiveScene);
+  m_ScenePropertiesPanel.SetScene(m_ActiveScene);
   m_SelectedEntity = NullEntity;
 
   // Create some default entities to click on

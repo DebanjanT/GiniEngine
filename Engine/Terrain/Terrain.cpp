@@ -51,6 +51,11 @@ uniform sampler2D u_Layer1Albedo;
 uniform sampler2D u_Layer2Albedo;
 uniform sampler2D u_Layer3Albedo;
 
+uniform sampler2D u_Layer0Normal;
+uniform sampler2D u_Layer1Normal;
+uniform sampler2D u_Layer2Normal;
+uniform sampler2D u_Layer3Normal;
+
 uniform vec2 u_Layer0Tiling;
 uniform vec2 u_Layer1Tiling;
 uniform vec2 u_Layer2Tiling;
@@ -61,41 +66,144 @@ uniform vec3 u_Layer1Color;
 uniform vec3 u_Layer2Color;
 uniform vec3 u_Layer3Color;
 
+uniform float u_Layer0Roughness;
+uniform float u_Layer1Roughness;
+uniform float u_Layer2Roughness;
+uniform float u_Layer3Roughness;
+
+uniform float u_Layer0Metallic;
+uniform float u_Layer1Metallic;
+uniform float u_Layer2Metallic;
+uniform float u_Layer3Metallic;
+
 uniform bool u_HasLayer0Texture;
 uniform bool u_HasLayer1Texture;
 uniform bool u_HasLayer2Texture;
 uniform bool u_HasLayer3Texture;
 
+uniform bool u_HasLayer0Normal;
+uniform bool u_HasLayer1Normal;
+uniform bool u_HasLayer2Normal;
+uniform bool u_HasLayer3Normal;
+
 uniform vec3 u_LightDir;
 uniform vec3 u_LightColor;
 uniform vec3 u_CameraPos;
+uniform float u_AmbientIntensity;
+
+const float PI = 3.14159265359;
+
+// PBR functions
+float DistributionGGX(vec3 N, vec3 H, float roughness) {
+    float a = roughness * roughness;
+    float a2 = a * a;
+    float NdotH = max(dot(N, H), 0.0);
+    float NdotH2 = NdotH * NdotH;
+    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
+    denom = PI * denom * denom;
+    return a2 / max(denom, 0.0001);
+}
+
+float GeometrySchlickGGX(float NdotV, float roughness) {
+    float r = (roughness + 1.0);
+    float k = (r * r) / 8.0;
+    return NdotV / (NdotV * (1.0 - k) + k);
+}
+
+float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
+    float NdotV = max(dot(N, V), 0.0);
+    float NdotL = max(dot(N, L), 0.0);
+    return GeometrySchlickGGX(NdotV, roughness) * GeometrySchlickGGX(NdotL, roughness);
+}
+
+vec3 FresnelSchlick(float cosTheta, vec3 F0) {
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+// Convert normal map to world space
+vec3 GetNormalFromMap(vec3 normalMapSample, vec3 worldNormal, vec3 worldPos, vec2 texCoord) {
+    vec3 tangentNormal = normalMapSample * 2.0 - 1.0;
+    
+    vec3 Q1 = dFdx(worldPos);
+    vec3 Q2 = dFdy(worldPos);
+    vec2 st1 = dFdx(texCoord);
+    vec2 st2 = dFdy(texCoord);
+    
+    vec3 N = normalize(worldNormal);
+    vec3 T = normalize(Q1 * st2.t - Q2 * st1.t);
+    vec3 B = -normalize(cross(N, T));
+    mat3 TBN = mat3(T, B, N);
+    
+    return normalize(TBN * tangentNormal);
+}
 
 void main() {
     vec4 splat = texture(u_Splatmap, v_TexCoord);
     
-    // Sample each layer with its tiling, use fallback color if no texture
-    vec3 layer0 = u_HasLayer0Texture ? texture(u_Layer0Albedo, v_TexCoord * u_Layer0Tiling).rgb : u_Layer0Color;
-    vec3 layer1 = u_HasLayer1Texture ? texture(u_Layer1Albedo, v_TexCoord * u_Layer1Tiling).rgb : u_Layer1Color;
-    vec3 layer2 = u_HasLayer2Texture ? texture(u_Layer2Albedo, v_TexCoord * u_Layer2Tiling).rgb : u_Layer2Color;
-    vec3 layer3 = u_HasLayer3Texture ? texture(u_Layer3Albedo, v_TexCoord * u_Layer3Tiling).rgb : u_Layer3Color;
+    // Normalize splatmap weights
+    float totalWeight = splat.r + splat.g + splat.b + splat.a;
+    if (totalWeight > 0.001) {
+        splat /= totalWeight;
+    } else {
+        splat = vec4(1.0, 0.0, 0.0, 0.0);
+    }
+    
+    // Sample each layer with its tiling
+    vec2 uv0 = v_TexCoord * u_Layer0Tiling;
+    vec2 uv1 = v_TexCoord * u_Layer1Tiling;
+    vec2 uv2 = v_TexCoord * u_Layer2Tiling;
+    vec2 uv3 = v_TexCoord * u_Layer3Tiling;
+    
+    // Albedo - textures are already in sRGB, don't double-gamma
+    vec3 layer0 = u_HasLayer0Texture ? texture(u_Layer0Albedo, uv0).rgb : u_Layer0Color;
+    vec3 layer1 = u_HasLayer1Texture ? texture(u_Layer1Albedo, uv1).rgb : u_Layer1Color;
+    vec3 layer2 = u_HasLayer2Texture ? texture(u_Layer2Albedo, uv2).rgb : u_Layer2Color;
+    vec3 layer3 = u_HasLayer3Texture ? texture(u_Layer3Albedo, uv3).rgb : u_Layer3Color;
+    
+    // Normal maps
+    vec3 norm0 = u_HasLayer0Normal ? texture(u_Layer0Normal, uv0).rgb : vec3(0.5, 0.5, 1.0);
+    vec3 norm1 = u_HasLayer1Normal ? texture(u_Layer1Normal, uv1).rgb : vec3(0.5, 0.5, 1.0);
+    vec3 norm2 = u_HasLayer2Normal ? texture(u_Layer2Normal, uv2).rgb : vec3(0.5, 0.5, 1.0);
+    vec3 norm3 = u_HasLayer3Normal ? texture(u_Layer3Normal, uv3).rgb : vec3(0.5, 0.5, 1.0);
     
     // Blend layers based on splatmap
     vec3 albedo = layer0 * splat.r + layer1 * splat.g + layer2 * splat.b + layer3 * splat.a;
+    vec3 blendedNormalMap = norm0 * splat.r + norm1 * splat.g + norm2 * splat.b + norm3 * splat.a;
+    float roughness = u_Layer0Roughness * splat.r + u_Layer1Roughness * splat.g + u_Layer2Roughness * splat.b + u_Layer3Roughness * splat.a;
+    float metallic = u_Layer0Metallic * splat.r + u_Layer1Metallic * splat.g + u_Layer2Metallic * splat.b + u_Layer3Metallic * splat.a;
     
-    // Simple lighting
-    vec3 normal = normalize(v_Normal);
-    vec3 lightDir = normalize(-u_LightDir);
-    float diff = max(dot(normal, lightDir), 0.0);
+    // Get world-space normal from blended normal map
+    vec3 N = GetNormalFromMap(blendedNormalMap, v_Normal, v_WorldPos, v_TexCoord);
+    vec3 V = normalize(u_CameraPos - v_WorldPos);
+    vec3 L = normalize(-u_LightDir);
+    vec3 H = normalize(V + L);
     
-    vec3 viewDir = normalize(u_CameraPos - v_WorldPos);
-    vec3 halfDir = normalize(lightDir + viewDir);
-    float spec = pow(max(dot(normal, halfDir), 0.0), 32.0);
+    // PBR calculations
+    vec3 F0 = vec3(0.04);
+    F0 = mix(F0, albedo, metallic);
     
-    vec3 ambient = 0.3 * albedo;
-    vec3 diffuse = diff * albedo * u_LightColor;
-    vec3 specular = spec * 0.2 * u_LightColor;
+    float NDF = DistributionGGX(N, H, roughness);
+    float G = GeometrySmith(N, V, L, roughness);
+    vec3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
     
-    vec3 color = ambient + diffuse + specular;
+    vec3 numerator = NDF * G * F;
+    float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+    vec3 specular = numerator / denominator;
+    
+    vec3 kS = F;
+    vec3 kD = vec3(1.0) - kS;
+    kD *= 1.0 - metallic;
+    
+    float NdotL = max(dot(N, L), 0.0);
+    vec3 Lo = (kD * albedo / PI + specular) * u_LightColor * NdotL;
+    
+    // Ambient lighting (simple approximation)
+    vec3 ambient = u_AmbientIntensity * albedo;
+    
+    vec3 color = ambient + Lo;
+    
+    // Tone mapping (ACES approximation)
+    color = color / (color + vec3(1.0));
     
     // Gamma correction
     color = pow(color, vec3(1.0/2.2));
@@ -666,10 +774,11 @@ void Terrain::Render(const Camera3D &camera) {
   m_Shader->SetMat4("u_View", camera.GetViewMatrix());
   m_Shader->SetMat4("u_Projection", camera.GetProjectionMatrix());
 
-  // Lighting
-  m_Shader->SetVec3("u_LightDir", Vec3(-0.2f, -1.0f, -0.3f));
-  m_Shader->SetVec3("u_LightColor", Vec3(1.0f));
+  // Lighting - use member settings
+  m_Shader->SetVec3("u_LightDir", m_SunDirection);
+  m_Shader->SetVec3("u_LightColor", m_SunColor);
   m_Shader->SetVec3("u_CameraPos", camera.GetPosition());
+  m_Shader->SetFloat("u_AmbientIntensity", m_AmbientIntensity);
 
   // Splatmap
   if (m_SplatmapTexture) {
@@ -685,32 +794,73 @@ void Terrain::Render(const Camera3D &camera) {
       Vec3(0.9f, 0.9f, 0.95f)  // Layer 3: Snow white
   };
 
-  // Layer textures
+  // Layer textures and materials
+  u32 textureSlot = 1;
   for (u32 i = 0; i < 4; i++) {
-    std::string uniformName = "u_Layer" + std::to_string(i) + "Albedo";
+    std::string albedoName = "u_Layer" + std::to_string(i) + "Albedo";
+    std::string normalName = "u_Layer" + std::to_string(i) + "Normal";
     std::string tilingName = "u_Layer" + std::to_string(i) + "Tiling";
     std::string colorName = "u_Layer" + std::to_string(i) + "Color";
+    std::string roughnessName = "u_Layer" + std::to_string(i) + "Roughness";
+    std::string metallicName = "u_Layer" + std::to_string(i) + "Metallic";
     std::string hasTexName = "u_HasLayer" + std::to_string(i) + "Texture";
+    std::string hasNormalName = "u_HasLayer" + std::to_string(i) + "Normal";
 
-    bool hasTexture = (i < m_Layers.size() && m_Layers[i].albedoMap);
-    m_Shader->SetInt(hasTexName.c_str(), hasTexture ? 1 : 0);
+    bool hasAlbedo = (i < m_Layers.size() && m_Layers[i].albedoMap);
+    bool hasNormal = (i < m_Layers.size() && m_Layers[i].normalMap);
 
-    if (hasTexture) {
-      m_Layers[i].albedoMap->Bind(1 + i);
-      m_Shader->SetInt(uniformName.c_str(), 1 + i);
-      m_Shader->SetVec2(tilingName.c_str(), m_Layers[i].tiling);
-    } else {
-      m_Shader->SetVec2(tilingName.c_str(), Vec2(1.0f));
+    m_Shader->SetInt(hasTexName.c_str(), hasAlbedo ? 1 : 0);
+    m_Shader->SetInt(hasNormalName.c_str(), hasNormal ? 1 : 0);
+
+    if (hasAlbedo) {
+      m_Layers[i].albedoMap->Bind(textureSlot);
+      m_Shader->SetInt(albedoName.c_str(), textureSlot);
+      textureSlot++;
     }
+
+    if (hasNormal) {
+      m_Layers[i].normalMap->Bind(textureSlot);
+      m_Shader->SetInt(normalName.c_str(), textureSlot);
+      textureSlot++;
+    }
+
+    // Set tiling
+    Vec2 tiling = (i < m_Layers.size()) ? m_Layers[i].tiling : Vec2(1.0f);
+    m_Shader->SetVec2(tilingName.c_str(), tiling);
 
     // Set fallback color from layer or default
     Vec3 color = (i < m_Layers.size()) ? m_Layers[i].color : defaultColors[i];
     m_Shader->SetVec3(colorName.c_str(), color);
+
+    // Set roughness and metallic
+    f32 roughness = (i < m_Layers.size()) ? m_Layers[i].roughness : 0.8f;
+    f32 metallic = (i < m_Layers.size()) ? m_Layers[i].metallic : 0.0f;
+    m_Shader->SetFloat(roughnessName.c_str(), roughness);
+    m_Shader->SetFloat(metallicName.c_str(), metallic);
   }
 
   glBindVertexArray(m_VAO);
   glDrawElements(GL_TRIANGLES, m_IndexCount, GL_UNSIGNED_INT, 0);
   glBindVertexArray(0);
+}
+
+void Terrain::Render(const Camera3D &camera, const Vec3 &sunDirection,
+                     const Vec3 &sunColor, f32 ambientIntensity) {
+  // Temporarily set light settings and render
+  Vec3 oldSunDir = m_SunDirection;
+  Vec3 oldSunColor = m_SunColor;
+  f32 oldAmbient = m_AmbientIntensity;
+
+  m_SunDirection = sunDirection;
+  m_SunColor = sunColor;
+  m_AmbientIntensity = ambientIntensity;
+
+  Render(camera);
+
+  // Restore old settings
+  m_SunDirection = oldSunDir;
+  m_SunColor = oldSunColor;
+  m_AmbientIntensity = oldAmbient;
 }
 
 void Terrain::RenderWireframe(const Camera3D &camera) {

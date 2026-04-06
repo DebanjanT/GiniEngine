@@ -67,7 +67,19 @@ public:
 
   // Rendering
   void Render(const Camera3D &camera);
+  void Render(const Camera3D &camera, const Vec3 &sunDirection,
+              const Vec3 &sunColor, f32 ambientIntensity);
   void RenderWireframe(const Camera3D &camera);
+
+  // Light settings (used when no external light is provided)
+  void SetSunDirection(const Vec3 &dir) {
+    m_SunDirection = glm::normalize(dir);
+  }
+  void SetSunColor(const Vec3 &color) { m_SunColor = color; }
+  void SetAmbientIntensity(f32 intensity) { m_AmbientIntensity = intensity; }
+  Vec3 GetSunDirection() const { return m_SunDirection; }
+  Vec3 GetSunColor() const { return m_SunColor; }
+  f32 GetAmbientIntensity() const { return m_AmbientIntensity; }
 
   // Mesh generation
   void RegenerateMesh();
@@ -165,6 +177,11 @@ private:
 
   // LOD settings
   std::vector<f32> m_LODDistances = {50.0f, 100.0f, 200.0f, 400.0f};
+
+  // Light settings
+  Vec3 m_SunDirection = glm::normalize(Vec3(-0.5f, -0.8f, -0.3f));
+  Vec3 m_SunColor = Vec3(3.0f, 2.9f, 2.7f);
+  f32 m_AmbientIntensity = 0.15f;
 
   bool m_NeedsUpdate = true;
 };

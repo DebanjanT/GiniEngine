@@ -262,4 +262,12 @@ void Scene::LoadTerrainFromFile(const std::string &filepath) {
   GINI_INFO("Loaded terrain for scene: {}", filepath);
 }
 
+void Scene::EnableAtmosphericSky(bool enable) {
+  m_UseAtmosphericSky = enable;
+  if (enable && !m_AtmosphericSky) {
+    m_AtmosphericSky = AtmosphericSky::Create();
+    m_AtmosphericSky->Initialize();
+  }
+}
+
 } // namespace Gini

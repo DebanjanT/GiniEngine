@@ -26,6 +26,7 @@ set(ENGINE_SOURCES
     Renderer/Light.cpp
     Renderer/Renderer3D.cpp
     Renderer/Skybox.cpp
+    Renderer/AtmosphericSky.cpp
 
     # ECS
     ECS/World.cpp

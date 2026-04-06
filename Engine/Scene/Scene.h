@@ -3,6 +3,7 @@
 #include "Core/Types.h"
 #include "ECS/Components.h"
 #include "ECS/World.h"
+#include "Renderer/AtmosphericSky.h"
 #include "Terrain/Terrain.h"
 #include <string>
 #include <vector>
@@ -71,6 +72,13 @@ public:
   const std::string &GetTerrainPath() const { return m_TerrainPath; }
   void SetTerrainPath(const std::string &path) { m_TerrainPath = path; }
 
+  // Atmospheric Sky
+  void SetAtmosphericSky(Ref<AtmosphericSky> sky) { m_AtmosphericSky = sky; }
+  Ref<AtmosphericSky> GetAtmosphericSky() const { return m_AtmosphericSky; }
+  bool HasAtmosphericSky() const { return m_AtmosphericSky != nullptr; }
+  void EnableAtmosphericSky(bool enable);
+  bool IsAtmosphericSkyEnabled() const { return m_UseAtmosphericSky; }
+
 private:
   std::string m_Name;
   std::string m_Filepath;
@@ -85,6 +93,10 @@ private:
   // Terrain (one terrain per scene/map)
   Ref<Terrain> m_Terrain;
   std::string m_TerrainPath;
+
+  // Atmospheric Sky
+  Ref<AtmosphericSky> m_AtmosphericSky;
+  bool m_UseAtmosphericSky = true;
 };
 
 // Scene Manager for handling multiple scenes

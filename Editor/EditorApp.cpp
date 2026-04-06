@@ -108,6 +108,12 @@ void EditorApp::OnUpdate(f32 deltaTime) {
   if (m_SceneState == SceneState::Play && m_ActiveScene) {
     m_ActiveScene->OnUpdate(deltaTime);
   }
+
+  // Update atmospheric sky for cloud animation
+  if (m_ActiveScene && m_ActiveScene->IsAtmosphericSkyEnabled() &&
+      m_ActiveScene->HasAtmosphericSky()) {
+    m_ActiveScene->GetAtmosphericSky()->Update(deltaTime);
+  }
 }
 
 void EditorApp::OnRender() {
@@ -121,10 +127,24 @@ void EditorApp::OnRender() {
   // Render scene
   Renderer3D::BeginScene(*m_EditorCamera);
 
+  // Render atmospheric sky if enabled
+  if (m_ActiveScene && m_ActiveScene->IsAtmosphericSkyEnabled() &&
+      m_ActiveScene->HasAtmosphericSky()) {
+    m_ActiveScene->GetAtmosphericSky()->Render(*m_EditorCamera);
+  }
+
   // Render terrain - prefer scene terrain if linked, otherwise use editor
-  // terrain
+  // terrain Pass sun settings from atmospheric sky if available
   if (m_ActiveScene && m_ActiveScene->HasTerrain()) {
-    m_ActiveScene->GetTerrain()->Render(*m_EditorCamera);
+    auto terrain = m_ActiveScene->GetTerrain();
+    if (m_ActiveScene->IsAtmosphericSkyEnabled() &&
+        m_ActiveScene->HasAtmosphericSky()) {
+      auto sky = m_ActiveScene->GetAtmosphericSky();
+      terrain->Render(*m_EditorCamera, sky->GetSunDirection(),
+                      sky->GetSunColor(), 0.2f);
+    } else {
+      terrain->Render(*m_EditorCamera);
+    }
   } else if (m_Terrain) {
     m_Terrain->Render(*m_EditorCamera);
   }

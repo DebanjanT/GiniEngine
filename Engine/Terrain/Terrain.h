@@ -120,6 +120,7 @@ private:
   void ExportRoughnessTexture(const std::string &filepath);
   void ExportAOTexture(const std::string &filepath);
   void ExportMetallicTexture(const std::string &filepath);
+  void ExportSplatmapTexture(const std::string &filepath);
   void ExportOBJMesh(const std::string &filepath);
   void ExportMTLFile(const std::string &filepath,
                      const std::string &terrainName);

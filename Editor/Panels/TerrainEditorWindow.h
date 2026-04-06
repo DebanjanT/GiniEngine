@@ -49,6 +49,8 @@ private:
   void SaveTerrain();
   void ExportTerrain();
   void CreateNewTerrain();
+  void OpenTerrain();
+  void UpdateTerrain();
 
   bool m_IsOpen = false;
 

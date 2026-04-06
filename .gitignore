@@ -208,3 +208,4 @@ config.local.h
 *.dmp
 *.mdmp
 crash_reports/
+reference/Hazel

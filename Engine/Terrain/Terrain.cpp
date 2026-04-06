@@ -858,7 +858,8 @@ void Terrain::LoadTerrain(const std::string &filepath) {
             f32 minH = 1.0f, maxH = 0.0f;
             for (u32 i = 0; i < m_Width * m_Height; i++) {
               m_Heightmap[i] = static_cast<f32>(heightData[i]) / 255.0f;
-              m_Splatmap[i * 4] = 1.0f; // Default first layer
+              m_Splatmap[i * 4] = 1.0f; // Default first layer (will be
+                                        // overwritten if splatmap exists)
               minH = std::min(minH, m_Heightmap[i]);
               maxH = std::max(maxH, m_Heightmap[i]);
             }
@@ -871,6 +872,35 @@ void Terrain::LoadTerrain(const std::string &filepath) {
           }
         } else {
           GINI_ERROR("Heightmap file not found: {}", heightmapPath);
+        }
+      }
+
+      // Load splatmap if available
+      if (textures["Splatmap"]) {
+        std::string splatmapPath =
+            baseDir + "/" + textures["Splatmap"].as<std::string>();
+        if (std::filesystem::exists(splatmapPath)) {
+          int width, height, channels;
+          stbi_set_flip_vertically_on_load(0);
+          u8 *splatData =
+              stbi_load(splatmapPath.c_str(), &width, &height, &channels, 4);
+          if (splatData && width == (int)m_Width && height == (int)m_Height) {
+            for (u32 i = 0; i < m_Width * m_Height; i++) {
+              m_Splatmap[i * 4 + 0] =
+                  static_cast<f32>(splatData[i * 4 + 0]) / 255.0f;
+              m_Splatmap[i * 4 + 1] =
+                  static_cast<f32>(splatData[i * 4 + 1]) / 255.0f;
+              m_Splatmap[i * 4 + 2] =
+                  static_cast<f32>(splatData[i * 4 + 2]) / 255.0f;
+              m_Splatmap[i * 4 + 3] =
+                  static_cast<f32>(splatData[i * 4 + 3]) / 255.0f;
+            }
+            stbi_image_free(splatData);
+            GINI_INFO("Splatmap loaded: {}x{}", width, height);
+          } else if (splatData) {
+            stbi_image_free(splatData);
+            GINI_WARN("Splatmap size mismatch, using default");
+          }
         }
       }
     } else {
@@ -977,6 +1007,7 @@ void Terrain::ExportTerrain(const std::string &exportFolder,
   ExportRoughnessTexture(basePath + "-roughness.jpg");
   ExportAOTexture(basePath + "-ambientocclusion.jpg");
   ExportMetallicTexture(basePath + "-metallic.jpg");
+  ExportSplatmapTexture(basePath + "-splatmap.png");
 
   // Export mesh files
   ExportOBJMesh(basePath + ".obj");
@@ -1275,6 +1306,26 @@ void Terrain::ExportMetallicTexture(const std::string &filepath) {
   GINI_INFO("Exported: {}", filepath);
 }
 
+void Terrain::ExportSplatmapTexture(const std::string &filepath) {
+  // Export splatmap as RGBA PNG (4 channels for 4 layers)
+  std::vector<u8> data(m_Width * m_Height * 4);
+
+  for (u32 i = 0; i < m_Width * m_Height; i++) {
+    data[i * 4 + 0] = static_cast<u8>(
+        std::clamp(m_Splatmap[i * 4 + 0] * 255.0f, 0.0f, 255.0f));
+    data[i * 4 + 1] = static_cast<u8>(
+        std::clamp(m_Splatmap[i * 4 + 1] * 255.0f, 0.0f, 255.0f));
+    data[i * 4 + 2] = static_cast<u8>(
+        std::clamp(m_Splatmap[i * 4 + 2] * 255.0f, 0.0f, 255.0f));
+    data[i * 4 + 3] = static_cast<u8>(
+        std::clamp(m_Splatmap[i * 4 + 3] * 255.0f, 0.0f, 255.0f));
+  }
+
+  stbi_write_png(filepath.c_str(), m_Width, m_Height, 4, data.data(),
+                 m_Width * 4);
+  GINI_INFO("Exported splatmap: {}", filepath);
+}
+
 void Terrain::ExportOBJMesh(const std::string &filepath) {
   f32 halfWidth = (m_Width - 1) * m_Scale * 0.5f;
   f32 halfHeight = (m_Height - 1) * m_Scale * 0.5f;
@@ -1454,6 +1505,8 @@ void Terrain::ExportGTerrainFile(const std::string &filepath,
       << (terrainName + "-ambientocclusion.jpg");
   out << YAML::Key << "Metallic" << YAML::Value
       << (terrainName + "-metallic.jpg");
+  out << YAML::Key << "Splatmap" << YAML::Value
+      << (terrainName + "-splatmap.png");
   out << YAML::EndMap; // Textures
 
   // Layer info

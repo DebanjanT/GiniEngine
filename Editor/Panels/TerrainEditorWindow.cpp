@@ -121,10 +121,17 @@ void TerrainEditorWindow::OnImGuiRender() {
         if (ImGui::MenuItem("New Terrain")) {
           CreateNewTerrain();
         }
+        if (ImGui::MenuItem("Open Terrain...")) {
+          OpenTerrain();
+        }
         if (ImGui::MenuItem("Save Terrain")) {
           SaveTerrain();
         }
-        if (ImGui::MenuItem("Export Mesh")) {
+        if (ImGui::MenuItem("Update Terrain")) {
+          UpdateTerrain();
+        }
+        ImGui::Separator();
+        if (ImGui::MenuItem("Export Terrain...")) {
           ExportTerrain();
         }
         ImGui::Separator();
@@ -815,6 +822,70 @@ void TerrainEditorWindow::ExportTerrain() {
 
   // Unified export - creates all files in the folder
   m_Terrain->ExportTerrain(exportFolder, terrainName);
+
+  // Store the path for future updates
+  m_CurrentFilePath = exportFolder + "/" + terrainName + ".gterrain";
+  GINI_INFO("Terrain exported. Use 'Update Terrain' to save changes to: {}",
+            m_CurrentFilePath);
+}
+
+void TerrainEditorWindow::OpenTerrain() {
+  std::vector<FileDialogFilter> filters = {{"Gini Terrain", "gterrain"}};
+  std::string filepath = FileDialog::OpenFile(filters);
+  if (filepath.empty())
+    return;
+
+  // Create new terrain and load from file
+  m_Terrain = Terrain::Create();
+  m_Terrain->LoadTerrain(filepath);
+  m_CurrentFilePath = filepath;
+
+  // Update editor materials from loaded terrain layers
+  for (u32 i = 0; i < m_Terrain->GetLayerCount() && i < 4; i++) {
+    TerrainLayer &layer = m_Terrain->GetLayer(i);
+    m_Materials[i].name = layer.name;
+    m_Materials[i].fallbackColor = layer.color;
+    m_Materials[i].tiling = layer.tiling.x;
+    m_Materials[i].roughness = layer.roughness;
+    m_Materials[i].metallic = layer.metallic;
+    m_Materials[i].albedoTexture = layer.albedoMap;
+    m_Materials[i].normalTexture = layer.normalMap;
+    if (layer.albedoMap) {
+      m_Materials[i].albedoPath = layer.albedoMap->GetPath();
+    }
+    if (layer.normalMap) {
+      m_Materials[i].normalPath = layer.normalMap->GetPath();
+    }
+  }
+
+  // Update terrain settings from loaded data
+  m_TerrainWidth = m_Terrain->GetWidth();
+  m_TerrainHeight = m_Terrain->GetHeight();
+  m_TerrainScale = m_Terrain->GetScale();
+  m_TerrainMaxHeight = m_Terrain->GetHeightScale();
+
+  GINI_INFO("Opened terrain: {}", filepath);
+}
+
+void TerrainEditorWindow::UpdateTerrain() {
+  if (!m_Terrain)
+    return;
+
+  if (m_CurrentFilePath.empty()) {
+    GINI_WARN("No terrain file loaded. Use 'Export Terrain' first or 'Open "
+              "Terrain' to load an existing terrain.");
+    return;
+  }
+
+  // Extract folder and terrain name from current path
+  std::filesystem::path path(m_CurrentFilePath);
+  std::string exportFolder = path.parent_path().string();
+  std::string terrainName = path.stem().string();
+
+  // Re-export all files to update them
+  m_Terrain->ExportTerrain(exportFolder, terrainName);
+
+  GINI_INFO("Terrain updated: {}", m_CurrentFilePath);
 }
 
 } // namespace Gini

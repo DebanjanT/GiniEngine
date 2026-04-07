@@ -1,5 +1,7 @@
 #include "Terrain.h"
 #include "Core/Logger.h"
+#include "Renderer/IBL.h"
+#include "Renderer/ShadowMap.h"
 
 #include <algorithm>
 #include <cmath>
@@ -39,7 +41,8 @@ void main() {
 
 static const char *s_TerrainFragmentShader = R"(
 #version 410 core
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec3 gNormal;
 
 in vec3 v_WorldPos;
 in vec3 v_Normal;
@@ -91,6 +94,18 @@ uniform vec3 u_LightColor;
 uniform vec3 u_CameraPos;
 uniform float u_AmbientIntensity;
 
+// Shadow mapping (CSM)
+uniform sampler2DArray u_ShadowMap;
+uniform mat4 u_LightSpaceMatrices[3];
+uniform float u_CascadeSplits[3];
+uniform int u_CascadeCount;
+uniform int u_HasShadows;
+uniform mat4 u_View;
+
+// IBL
+uniform samplerCube u_IrradianceMap;
+uniform int u_HasIBL;
+
 const float PI = 3.14159265359;
 
 // PBR functions
@@ -118,6 +133,31 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
 
 vec3 FresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+float TerrainShadowCalculation(vec3 worldPos, vec3 normal, vec3 lightDir) {
+    if (u_HasShadows == 0) return 0.0;
+    vec4 viewPos = u_View * vec4(worldPos, 1.0);
+    float depthValue = -viewPos.z;
+    int cascade = u_CascadeCount - 1;
+    for (int i = 0; i < u_CascadeCount; i++) {
+        if (depthValue < u_CascadeSplits[i]) { cascade = i; break; }
+    }
+    vec4 lightSpacePos = u_LightSpaceMatrices[cascade] * vec4(worldPos, 1.0);
+    vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+    projCoords = projCoords * 0.5 + 0.5;
+    if (projCoords.z > 1.0) return 0.0;
+    float currentDepth = projCoords.z;
+    float bias = max(0.005 * (1.0 - dot(normal, lightDir)), 0.001);
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / vec2(textureSize(u_ShadowMap, 0));
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            float pcfDepth = texture(u_ShadowMap, vec3(projCoords.xy + vec2(x, y) * texelSize.xy, float(cascade))).r;
+            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+    return shadow / 9.0;
 }
 
 // Convert normal map to world space
@@ -197,18 +237,23 @@ void main() {
     float NdotL = max(dot(N, L), 0.0);
     vec3 Lo = (kD * albedo / PI + specular) * u_LightColor * NdotL;
     
-    // Ambient lighting (simple approximation)
-    vec3 ambient = u_AmbientIntensity * albedo;
-    
+    // Shadow
+    float shadow = TerrainShadowCalculation(v_WorldPos, N, L);
+    Lo *= (1.0 - shadow);
+
+    // Ambient / IBL
+    vec3 ambient;
+    if (u_HasIBL == 1) {
+        vec3 irradiance = texture(u_IrradianceMap, N).rgb;
+        ambient = irradiance * albedo;
+    } else {
+        ambient = u_AmbientIntensity * albedo;
+    }
+
     vec3 color = ambient + Lo;
-    
-    // Tone mapping (ACES approximation)
-    color = color / (color + vec3(1.0));
-    
-    // Gamma correction
-    color = pow(color, vec3(1.0/2.2));
-    
+
     FragColor = vec4(color, 1.0);
+    gNormal = normalize(v_Normal) * 0.5 + 0.5;
 }
 )";
 
@@ -839,9 +884,27 @@ void Terrain::Render(const Camera3D &camera) {
     m_Shader->SetFloat(metallicName.c_str(), metallic);
   }
 
+  // Bind shadow maps
+  if (ShadowMap::IsInitialized()) {
+    m_Shader->SetMat4("u_View", camera.GetViewMatrix());
+    ShadowMap::BindShadowMaps(m_Shader.get(), textureSlot);
+    textureSlot += 1;
+  } else {
+    m_Shader->SetInt("u_HasShadows", 0);
+  }
+
+  // Bind IBL
+  IBL::BindIBLTextures(m_Shader.get(), textureSlot);
+
   glBindVertexArray(m_VAO);
   glDrawElements(GL_TRIANGLES, m_IndexCount, GL_UNSIGNED_INT, 0);
   glBindVertexArray(0);
+
+  for (u32 s = 0; s < textureSlot; s++) {
+    glActiveTexture(GL_TEXTURE0 + s);
+    glBindTexture(GL_TEXTURE_2D, 0);
+  }
+  glActiveTexture(GL_TEXTURE0);
 }
 
 void Terrain::Render(const Camera3D &camera, const Vec3 &sunDirection,

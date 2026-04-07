@@ -59,6 +59,7 @@ private:
 
   // Viewport
   Ref<Framebuffer> m_Framebuffer;
+  Ref<Framebuffer> m_HDRFramebuffer;
   Vec2 m_ViewportSize = Vec2(1280, 720);
   Vec2 m_ViewportBounds[2];
   bool m_ViewportFocused = false;

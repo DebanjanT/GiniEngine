@@ -23,7 +23,8 @@ void main() {
 
 static const char *s_SkyFragmentShader = R"(
 #version 410 core
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec3 gNormal;
 
 in vec3 v_WorldDir;
 
@@ -259,6 +260,7 @@ void main() {
     vec2 atmosphereHit = RaySphereIntersect(rayOrigin, rayDir, u_AtmosphereRadius);
     if (atmosphereHit.y < 0.0) {
         FragColor = vec4(0.0, 0.0, 0.0, 1.0);
+        gNormal = vec3(0.0);
         return;
     }
     
@@ -362,13 +364,8 @@ void main() {
         }
     }
     
-    // Tone mapping
-    skyColor = 1.0 - exp(-skyColor);
-    
-    // Gamma correction
-    skyColor = pow(skyColor, vec3(1.0/2.2));
-    
     FragColor = vec4(skyColor, 1.0);
+    gNormal = vec3(0.0);
 }
 )";
 
@@ -467,6 +464,53 @@ void AtmosphericSky::Render(const Camera3D &camera) {
   glBindVertexArray(0);
 
   // Restore depth state
+  glDepthMask(GL_TRUE);
+  glDepthFunc(GL_LESS);
+}
+
+void AtmosphericSky::Render(const Mat4 &viewMatrix, const Mat4 &projectionMatrix) {
+  if (!m_Initialized) {
+    Initialize();
+  }
+
+  glDepthMask(GL_FALSE);
+  glDepthFunc(GL_LEQUAL);
+
+  m_SkyShader->Bind();
+
+  Mat4 viewNoTranslation = Mat4(Mat3(viewMatrix));
+  Mat4 invViewProj = glm::inverse(projectionMatrix * viewNoTranslation);
+
+  m_SkyShader->SetMat4("u_InvViewProj", invViewProj);
+  m_SkyShader->SetVec3("u_CameraPos", Vec3(0.0f));
+
+  m_SkyShader->SetVec3("u_SunDir", m_Sun.direction);
+  m_SkyShader->SetVec3("u_SunColor", m_Sun.color);
+  m_SkyShader->SetFloat("u_SunIntensity", m_Sun.intensity);
+  m_SkyShader->SetFloat("u_SunDiskSize", m_Sun.diskSize);
+
+  m_SkyShader->SetVec3("u_RayleighCoeff", m_Atmosphere.rayleighCoeff);
+  m_SkyShader->SetFloat("u_RayleighScale", m_Atmosphere.rayleighScale);
+  m_SkyShader->SetVec3("u_MieCoeff", m_Atmosphere.mieCoeff);
+  m_SkyShader->SetFloat("u_MieScale", m_Atmosphere.mieScale);
+  m_SkyShader->SetFloat("u_MieG", m_Atmosphere.mieG);
+  m_SkyShader->SetFloat("u_PlanetRadius", m_Atmosphere.planetRadius);
+  m_SkyShader->SetFloat("u_AtmosphereRadius", m_Atmosphere.atmosphereRadius);
+  m_SkyShader->SetVec3("u_GroundColor", m_Atmosphere.groundColor);
+  m_SkyShader->SetFloat("u_GroundBrightness", m_Atmosphere.groundBrightness);
+
+  m_SkyShader->SetInt("u_CloudsEnabled", 0);
+  m_SkyShader->SetFloat("u_Time", m_Time);
+  m_SkyShader->SetFloat("u_CloudCoverage", m_Clouds.coverage);
+  m_SkyShader->SetFloat("u_CloudDensity", m_Clouds.density);
+  m_SkyShader->SetFloat("u_CloudHeight", m_Clouds.height);
+  m_SkyShader->SetFloat("u_CloudThickness", m_Clouds.thickness);
+  m_SkyShader->SetFloat("u_CloudQuality", m_Clouds.quality);
+
+  glBindVertexArray(m_SkyVAO);
+  glDrawArrays(GL_TRIANGLES, 0, 6);
+  glBindVertexArray(0);
+
   glDepthMask(GL_TRUE);
   glDepthFunc(GL_LESS);
 }

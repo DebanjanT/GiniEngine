@@ -1,7 +1,14 @@
 #include "EditorApp.h"
 #include "ImGui/ImGuizmo.h"
+#include "Renderer/IBL.h"
+#include "Renderer/Light.h"
+#include "Renderer/PostProcess.h"
 #include "Renderer/Renderer3D.h"
+#include "Renderer/ShadowMap.h"
+#include "Renderer/SSAO.h"
 #include "UI/ImGuiLayer.h"
+
+#include <glad/gl.h>
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -37,12 +44,28 @@ void EditorApp::OnInit() {
   // Initialize Weather System
   WeatherSystem::Init();
 
-  // Create framebuffer for viewport
+  // Create HDR framebuffer for 3D scene rendering
+  FramebufferSpec hdrSpec;
+  hdrSpec.width = 1280;
+  hdrSpec.height = 720;
+  hdrSpec.colorAttachments = {
+      {FramebufferTextureFormat::RGBA16F},
+      {FramebufferTextureFormat::RGB16F}
+  };
+  m_HDRFramebuffer = Framebuffer::Create(hdrSpec);
+
+  // Create final LDR framebuffer for ImGui viewport display
   FramebufferSpec fbSpec;
   fbSpec.width = 1280;
   fbSpec.height = 720;
-  fbSpec.samples = 1;
+  fbSpec.colorAttachments = {{FramebufferTextureFormat::RGBA8}};
   m_Framebuffer = Framebuffer::Create(fbSpec);
+
+  // Initialize post-processing, shadows, IBL, SSAO
+  PostProcess::Init();
+  ShadowMap::Init();
+  IBL::Init();
+  SSAO::Init(1280, 720);
 
   // Setup editor camera
   m_EditorCamera = CreateScope<Camera3D>(45.0f, 16.0f / 9.0f, 0.1f, 1000.0f);
@@ -75,15 +98,17 @@ void EditorApp::OnInit() {
   m_AssetBrowserPanel.SetVisible(true);
   m_WeatherPanel.SetVisible(true);
 
-  // Create default terrain
-  m_Terrain = Terrain::Create(128, 128, 50.0f);
-  m_Terrain->GenerateFromNoise(0.03f, 50.0f, 4);
-  m_TerrainPanel.SetTerrain(m_Terrain);
+  // No default terrain -- user creates/links terrain via Scene Properties or Terrain Editor
+  m_Terrain = nullptr;
 
   // Project launcher will be shown automatically (m_IsOpen = true by default)
 }
 
 void EditorApp::OnShutdown() {
+  SSAO::Shutdown();
+  IBL::Shutdown();
+  ShadowMap::Shutdown();
+  PostProcess::Shutdown();
   WeatherSystem::Shutdown();
   Renderer3D::Shutdown();
   ImGuiLayer::Shutdown();
@@ -138,19 +163,50 @@ void EditorApp::OnUpdate(f32 deltaTime) {
     m_ActiveScene->GetAtmosphericSky()->Update(deltaTime);
   }
 
-  // Update weather system
   WeatherSystem::Update(deltaTime);
 }
 
 void EditorApp::OnRender() {
-  // Render to framebuffer
-  m_Framebuffer->Bind();
+  // -- Shadow pass --
+  if (ShadowMap::IsInitialized()) {
+    auto& lightMgr = LightManager::Get();
+    if (lightMgr.HasDirectionalLight()) {
+      ShadowMap::BeginShadowPass(*m_EditorCamera, lightMgr.GetDirectionalLight());
+
+      auto depthShader = ShadowMap::GetDepthShader();
+      if (depthShader) {
+        const auto& matrices = ShadowMap::GetLightSpaceMatrices();
+        for (u32 c = 0; c < static_cast<u32>(matrices.size()); c++) {
+          glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                                    ShadowMap::GetShadowMapTexture(), 0, c);
+          glClear(GL_DEPTH_BUFFER_BIT);
+          depthShader->Bind();
+          depthShader->SetMat4("u_LightSpaceMatrix", matrices[c]);
+
+          if (m_Terrain) {
+            depthShader->SetMat4("u_Model", glm::translate(Mat4(1.0f), m_Terrain->GetWorldPosition()));
+          }
+        }
+      }
+      ShadowMap::EndShadowPass();
+    }
+  }
+
+  // -- IBL generation (once or when sky changes) --
+  static bool iblGenerated = false;
+  if (!iblGenerated && m_ActiveScene && m_ActiveScene->IsAtmosphericSkyEnabled() &&
+      m_ActiveScene->HasAtmosphericSky()) {
+    IBL::CaptureAtmosphericSky(m_ActiveScene->GetAtmosphericSky().get(), *m_EditorCamera);
+    iblGenerated = true;
+  }
+
+  // -- Main HDR render pass --
+  m_HDRFramebuffer->Bind();
   Renderer3D::SetViewport(0, 0, static_cast<u32>(m_ViewportSize.x),
                           static_cast<u32>(m_ViewportSize.y));
+  Renderer3D::SetClearColor(Color(0.0f, 0.0f, 0.0f));
   Renderer3D::Clear();
-  Renderer3D::SetClearColor(Color(0.1f, 0.1f, 0.15f));
 
-  // Render scene
   Renderer3D::BeginScene(*m_EditorCamera);
 
   // Render atmospheric sky if enabled
@@ -159,8 +215,7 @@ void EditorApp::OnRender() {
     m_ActiveScene->GetAtmosphericSky()->Render(*m_EditorCamera);
   }
 
-  // Render terrain - prefer scene terrain if linked, otherwise use editor
-  // terrain Pass sun settings from atmospheric sky if available
+  // Render terrain
   if (m_ActiveScene && m_ActiveScene->HasTerrain()) {
     auto terrain = m_ActiveScene->GetTerrain();
     if (m_ActiveScene->IsAtmosphericSkyEnabled() &&
@@ -176,7 +231,7 @@ void EditorApp::OnRender() {
   }
 
   if (m_ActiveScene) {
-    // Draw grid (only if no terrain)
+    // Draw grid
     for (int i = -10; i <= 10; i++) {
       Color gridColor =
           (i == 0) ? Color(0.5f, 0.5f, 0.5f) : Color(0.3f, 0.3f, 0.3f);
@@ -185,94 +240,89 @@ void EditorApp::OnRender() {
     }
     // Draw axis lines
     Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(5, 0, 0),
-                         Color(1.0f, 0.2f, 0.2f)); // X red
+                         Color(1.0f, 0.2f, 0.2f));
     Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(0, 5, 0),
-                         Color(0.2f, 1.0f, 0.2f)); // Y green
+                         Color(0.2f, 1.0f, 0.2f));
     Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(0, 0, 5),
-                         Color(0.2f, 0.2f, 1.0f)); // Z blue
+                         Color(0.2f, 0.2f, 1.0f));
 
-    // Draw entities with transforms as cubes - keep original colors always
+    // Draw entities
     auto &world = m_ActiveScene->GetWorld();
     auto view = world.GetRegistry().view<TransformComponent>();
     int entityIndex = 0;
     for (auto entity : view) {
       auto &transform = view.get<TransformComponent>(entity);
 
-      // Fixed colors for each cube (based on creation order)
       Color cubeColor;
       switch (entityIndex % 3) {
       case 0:
         cubeColor = Color(0.8f, 0.3f, 0.3f);
-        break; // Red
+        break;
       case 1:
         cubeColor = Color(0.3f, 0.8f, 0.3f);
-        break; // Green
+        break;
       case 2:
         cubeColor = Color(0.3f, 0.3f, 0.8f);
-        break; // Blue
+        break;
       }
 
-      // Draw cube at entity position
       Renderer3D::DrawCube(transform.position, transform.scale, cubeColor);
 
-      // Draw selection wireframe for selected entity (yellow outline only)
       if (entity == m_SelectedEntity) {
-        Vec3 halfSize =
-            transform.scale * 0.55f; // Slightly larger for visibility
+        Vec3 halfSize = transform.scale * 0.55f;
         Vec3 p = transform.position;
         Color wireColor(1.0f, 0.8f, 0.0f);
-        // Bottom face
         Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, -halfSize.z),
-                             p + Vec3(halfSize.x, -halfSize.y, -halfSize.z),
-                             wireColor);
+                             p + Vec3(halfSize.x, -halfSize.y, -halfSize.z), wireColor);
         Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, -halfSize.z),
-                             p + Vec3(halfSize.x, -halfSize.y, halfSize.z),
-                             wireColor);
+                             p + Vec3(halfSize.x, -halfSize.y, halfSize.z), wireColor);
         Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, halfSize.z),
-                             p + Vec3(-halfSize.x, -halfSize.y, halfSize.z),
-                             wireColor);
+                             p + Vec3(-halfSize.x, -halfSize.y, halfSize.z), wireColor);
         Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, halfSize.z),
-                             p + Vec3(-halfSize.x, -halfSize.y, -halfSize.z),
-                             wireColor);
-        // Top face
+                             p + Vec3(-halfSize.x, -halfSize.y, -halfSize.z), wireColor);
         Renderer3D::DrawLine(p + Vec3(-halfSize.x, halfSize.y, -halfSize.z),
-                             p + Vec3(halfSize.x, halfSize.y, -halfSize.z),
-                             wireColor);
+                             p + Vec3(halfSize.x, halfSize.y, -halfSize.z), wireColor);
         Renderer3D::DrawLine(p + Vec3(halfSize.x, halfSize.y, -halfSize.z),
-                             p + Vec3(halfSize.x, halfSize.y, halfSize.z),
-                             wireColor);
+                             p + Vec3(halfSize.x, halfSize.y, halfSize.z), wireColor);
         Renderer3D::DrawLine(p + Vec3(halfSize.x, halfSize.y, halfSize.z),
-                             p + Vec3(-halfSize.x, halfSize.y, halfSize.z),
-                             wireColor);
+                             p + Vec3(-halfSize.x, halfSize.y, halfSize.z), wireColor);
         Renderer3D::DrawLine(p + Vec3(-halfSize.x, halfSize.y, halfSize.z),
-                             p + Vec3(-halfSize.x, halfSize.y, -halfSize.z),
-                             wireColor);
-        // Vertical edges
+                             p + Vec3(-halfSize.x, halfSize.y, -halfSize.z), wireColor);
         Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, -halfSize.z),
-                             p + Vec3(-halfSize.x, halfSize.y, -halfSize.z),
-                             wireColor);
+                             p + Vec3(-halfSize.x, halfSize.y, -halfSize.z), wireColor);
         Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, -halfSize.z),
-                             p + Vec3(halfSize.x, halfSize.y, -halfSize.z),
-                             wireColor);
+                             p + Vec3(halfSize.x, halfSize.y, -halfSize.z), wireColor);
         Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, halfSize.z),
-                             p + Vec3(halfSize.x, halfSize.y, halfSize.z),
-                             wireColor);
+                             p + Vec3(halfSize.x, halfSize.y, halfSize.z), wireColor);
         Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, halfSize.z),
-                             p + Vec3(-halfSize.x, halfSize.y, halfSize.z),
-                             wireColor);
+                             p + Vec3(-halfSize.x, halfSize.y, halfSize.z), wireColor);
       }
 
       entityIndex++;
     }
   }
 
-  // Update rain position to follow camera for immersive effect
   WeatherSystem::UpdateRainPosition(m_EditorCamera->GetPosition());
-
-  // Render weather effects before ending scene (so it goes to framebuffer)
   WeatherSystem::Render(m_EditorCamera->GetViewProjectionMatrix());
 
   Renderer3D::EndScene();
+  m_HDRFramebuffer->Unbind();
+
+  // -- SSAO pass --
+  u32 ssaoTexture = 0;
+  if (SSAO::IsInitialized()) {
+    SSAO::Render(m_HDRFramebuffer->GetDepthAttachment(),
+                 m_HDRFramebuffer->GetColorAttachment(1),
+                 m_EditorCamera->GetProjectionMatrix(),
+                 m_EditorCamera->GetViewMatrix());
+    ssaoTexture = SSAO::GetSSAOTexture();
+  }
+
+  // Post-process: resolve HDR to LDR framebuffer with ACES tonemapping
+  m_Framebuffer->Bind();
+  Renderer3D::SetViewport(0, 0, static_cast<u32>(m_ViewportSize.x),
+                          static_cast<u32>(m_ViewportSize.y));
+  PostProcess::Resolve(m_HDRFramebuffer->GetColorAttachment(0), ssaoTexture, 1.0f, 2.2f);
   m_Framebuffer->Unbind();
 
   // Render ImGui
@@ -597,8 +647,14 @@ void EditorApp::DrawViewport() {
   if (m_ViewportSize.x != viewportPanelSize.x ||
       m_ViewportSize.y != viewportPanelSize.y) {
     m_ViewportSize = {viewportPanelSize.x, viewportPanelSize.y};
+    m_HDRFramebuffer->Resize(static_cast<u32>(m_ViewportSize.x),
+                             static_cast<u32>(m_ViewportSize.y));
     m_Framebuffer->Resize(static_cast<u32>(m_ViewportSize.x),
                           static_cast<u32>(m_ViewportSize.y));
+    if (SSAO::IsInitialized()) {
+      SSAO::Resize(static_cast<u32>(m_ViewportSize.x),
+                    static_cast<u32>(m_ViewportSize.y));
+    }
     m_EditorCamera->SetAspectRatio(m_ViewportSize.x / m_ViewportSize.y);
   }
 

@@ -60,6 +60,7 @@ public:
 
   void Initialize();
   void Render(const Camera3D &camera);
+  void Render(const Mat4 &viewMatrix, const Mat4 &projectionMatrix);
   void Update(f32 deltaTime) { m_Time += deltaTime * m_Clouds.speed; }
 
   // Settings access

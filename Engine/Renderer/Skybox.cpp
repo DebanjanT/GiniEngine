@@ -25,7 +25,8 @@ void main() {
 
 static const char* s_SkyboxFragmentShader = R"(
 #version 410 core
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec3 gNormal;
 
 in vec3 v_TexCoords;
 
@@ -37,12 +38,8 @@ void main() {
     vec3 color = textureLod(u_Skybox, v_TexCoords, u_Lod).rgb;
     color *= u_Intensity;
     
-    // Tone mapping for HDR
-    color = color / (color + vec3(1.0));
-    // Gamma correction
-    color = pow(color, vec3(1.0/2.2));
-    
     FragColor = vec4(color, 1.0);
+    gNormal = vec3(0.0, 0.0, 0.0);
 }
 )";
 

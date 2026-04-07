@@ -232,11 +232,11 @@ void Model::DrawMesh(u32 index, Shader* shader) const {
         if (matIndex >= 0 && matIndex < static_cast<i32>(m_Materials.size())) {
             const Material3D& mat = m_Materials[matIndex];
             
-            shader->SetVec3("u_Material.albedo", mat.albedo);
-            shader->SetFloat("u_Material.metallic", mat.metallic);
-            shader->SetFloat("u_Material.roughness", mat.roughness);
-            shader->SetFloat("u_Material.ao", mat.ao);
-            shader->SetVec3("u_Material.emissive", mat.emissive);
+            shader->SetVec3("u_Material_albedo", mat.albedo);
+            shader->SetFloat("u_Material_metallic", mat.metallic);
+            shader->SetFloat("u_Material_roughness", mat.roughness);
+            shader->SetFloat("u_Material_ao", mat.ao);
+            shader->SetVec3("u_Material_emissive", mat.emissive);
             
             // Bind textures
             u32 textureUnit = 0;

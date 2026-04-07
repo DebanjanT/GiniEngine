@@ -1,4 +1,6 @@
 #include "Renderer3D.h"
+#include "Renderer/IBL.h"
+#include "Renderer/ShadowMap.h"
 #include "Core/Logger.h"
 
 #define GLFW_INCLUDE_NONE
@@ -70,7 +72,8 @@ void main() {
 
 static const char *s_PBRFragmentShader = R"(
 #version 410 core
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec3 gNormal;
 
 in vec3 v_WorldPos;
 in vec3 v_Normal;
@@ -123,13 +126,42 @@ struct PointLight {
     float radius;
 };
 
+struct SpotLight {
+    vec3 position;
+    vec3 direction;
+    vec3 color;
+    float intensity;
+    float innerCutoff;
+    float outerCutoff;
+    float constant;
+    float linear;
+    float quadratic;
+};
+
 uniform AmbientLight u_AmbientLight;
 uniform DirectionalLight u_DirectionalLight;
 uniform int u_HasDirectionalLight;
 uniform PointLight u_PointLights[32];
 uniform int u_PointLightCount;
+uniform SpotLight u_SpotLights[16];
+uniform int u_SpotLightCount;
 
 uniform vec3 u_CameraPos;
+
+// IBL
+uniform samplerCube u_IrradianceMap;
+uniform samplerCube u_PrefilterMap;
+uniform sampler2D u_BRDFLUT;
+uniform float u_MaxReflectionLod;
+uniform int u_HasIBL;
+
+// Shadow mapping (CSM)
+uniform sampler2DArray u_ShadowMap;
+uniform mat4 u_LightSpaceMatrices[3];
+uniform float u_CascadeSplits[3];
+uniform int u_CascadeCount;
+uniform int u_HasShadows;
+uniform mat4 u_View;
 
 const float PI = 3.14159265359;
 
@@ -168,6 +200,44 @@ float GeometrySmith(vec3 N, vec3 V, vec3 L, float roughness) {
 
 vec3 fresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness) {
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+float ShadowCalculation(vec3 worldPos, vec3 normal, vec3 lightDir) {
+    if (u_HasShadows == 0) return 0.0;
+
+    vec4 viewPos = u_View * vec4(worldPos, 1.0);
+    float depthValue = -viewPos.z;
+
+    int cascade = u_CascadeCount - 1;
+    for (int i = 0; i < u_CascadeCount; i++) {
+        if (depthValue < u_CascadeSplits[i]) {
+            cascade = i;
+            break;
+        }
+    }
+
+    vec4 lightSpacePos = u_LightSpaceMatrices[cascade] * vec4(worldPos, 1.0);
+    vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+    projCoords = projCoords * 0.5 + 0.5;
+
+    if (projCoords.z > 1.0) return 0.0;
+
+    float currentDepth = projCoords.z;
+    float bias = max(0.005 * (1.0 - dot(normal, lightDir)), 0.001);
+
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / vec2(textureSize(u_ShadowMap, 0));
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            float pcfDepth = texture(u_ShadowMap, vec3(projCoords.xy + vec2(x, y) * texelSize.xy, float(cascade))).r;
+            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;
+        }
+    }
+    return shadow / 9.0;
 }
 
 // Parallax Occlusion Mapping
@@ -295,20 +365,73 @@ void main() {
         Lo += (kD * albedo / PI + specular) * radiance * NdotL;
     }
     
-    // Ambient
-    vec3 ambient = u_AmbientLight.color * u_AmbientLight.intensity * albedo * ao;
-    
+    // Spot lights
+    for (int i = 0; i < u_SpotLightCount; i++) {
+        vec3 L = normalize(u_SpotLights[i].position - v_WorldPos);
+        vec3 H = normalize(V + L);
+        float distance = length(u_SpotLights[i].position - v_WorldPos);
+        float attenuation = 1.0 / (u_SpotLights[i].constant +
+                                   u_SpotLights[i].linear * distance +
+                                   u_SpotLights[i].quadratic * distance * distance);
+
+        float theta = dot(L, normalize(-u_SpotLights[i].direction));
+        float epsilon = u_SpotLights[i].innerCutoff - u_SpotLights[i].outerCutoff;
+        float spotIntensity = clamp((theta - u_SpotLights[i].outerCutoff) / epsilon, 0.0, 1.0);
+
+        vec3 radiance = u_SpotLights[i].color * u_SpotLights[i].intensity * attenuation * spotIntensity;
+
+        float NDF = DistributionGGX(N, H, roughness);
+        float G = GeometrySmith(N, V, L, roughness);
+        vec3 F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+        vec3 numerator = NDF * G * F;
+        float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+        vec3 specular = numerator / denominator;
+
+        vec3 kS = F;
+        vec3 kD = vec3(1.0) - kS;
+        kD *= 1.0 - metallic;
+
+        float NdotL = max(dot(N, L), 0.0);
+        Lo += (kD * albedo / PI + specular) * radiance * NdotL;
+    }
+
+    // Shadow
+    float shadow = 0.0;
+    if (u_HasDirectionalLight == 1) {
+        vec3 L = normalize(-u_DirectionalLight.direction);
+        shadow = ShadowCalculation(v_WorldPos, N, L);
+    }
+    Lo *= (1.0 - shadow);
+
+    // Ambient / IBL
+    vec3 ambient;
+    if (u_HasIBL == 1) {
+        vec3 F = fresnelSchlickRoughness(max(dot(N, V), 0.0), F0, roughness);
+        vec3 kS = F;
+        vec3 kD = vec3(1.0) - kS;
+        kD *= 1.0 - metallic;
+
+        vec3 irradiance = texture(u_IrradianceMap, N).rgb;
+        vec3 diffuseIBL = irradiance * albedo;
+
+        vec3 R = reflect(-V, N);
+        vec3 prefilteredColor = textureLod(u_PrefilterMap, R, roughness * u_MaxReflectionLod).rgb;
+        vec2 brdf = texture(u_BRDFLUT, vec2(max(dot(N, V), 0.0), roughness)).rg;
+        vec3 specularIBL = prefilteredColor * (F * brdf.x + brdf.y);
+
+        ambient = (kD * diffuseIBL + specularIBL) * ao;
+    } else {
+        ambient = u_AmbientLight.color * u_AmbientLight.intensity * albedo * ao;
+    }
+
     // Emissive
     vec3 emissive = u_Material_emissive;
-    
+
     vec3 color = ambient + Lo + emissive;
-    
-    // HDR tonemapping
-    color = color / (color + vec3(1.0));
-    // Gamma correction
-    color = pow(color, vec3(1.0/2.2));
-    
+
     FragColor = vec4(color, 1.0);
+    gNormal = N * 0.5 + 0.5;
 }
 )";
 
@@ -338,7 +461,8 @@ void main() {
 
 static const char *s_BasicFragmentShader = R"(
 #version 410 core
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec3 gNormal;
 
 in vec3 v_Normal;
 in vec2 v_TexCoords;
@@ -363,7 +487,8 @@ void main() {
     }
     
     vec3 result = (ambient + diffuse) * texColor.rgb;
-    FragColor = vec4(result, texColor.a);
+    FragColor = vec4(result, texColor.a * u_Color.a);
+    gNormal = norm * 0.5 + 0.5;
 }
 )";
 
@@ -385,12 +510,14 @@ void main() {
 
 static const char *s_LineFragmentShader = R"(
 #version 410 core
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor;
+layout(location = 1) out vec3 gNormal;
 
 in vec4 v_Color;
 
 void main() {
     FragColor = v_Color;
+    gNormal = vec3(0.0, 0.5, 0.0);
 }
 )";
 
@@ -592,6 +719,19 @@ void Renderer3D::DrawMesh(const Ref<Mesh> &mesh, const Mat4 &transform,
     s_Data->pbrShader->SetFloat("u_HeightScale", material.heightScale);
   } else {
     s_Data->pbrShader->SetInt("u_HasHeightMap", 0);
+  }
+
+  // View matrix for shadow cascade selection
+  s_Data->pbrShader->SetMat4("u_View", s_Data->viewMatrix);
+
+  // Bind IBL textures (units 10-12)
+  IBL::BindIBLTextures(s_Data->pbrShader.get(), 10);
+
+  // Bind shadow maps (unit 13)
+  if (ShadowMap::IsInitialized()) {
+    ShadowMap::BindShadowMaps(s_Data->pbrShader.get(), 13);
+  } else {
+    s_Data->pbrShader->SetInt("u_HasShadows", 0);
   }
 
   mesh->Draw();

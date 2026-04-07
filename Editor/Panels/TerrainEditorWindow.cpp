@@ -3,6 +3,7 @@
 #include "Core/Logger.h"
 #include "Project/Project.h"
 #include "Renderer/Material.h"
+#include "Renderer/PostProcess.h"
 #include "Renderer/Renderer3D.h"
 #include "Utils/FileDialog.h"
 
@@ -38,11 +39,20 @@ void TerrainEditorWindow::Open() {
   m_IsOpen = true;
   m_NeedsLayoutReset = true; // Reset layout every time editor is opened
 
-  // Create framebuffer for terrain viewport
+  // Create HDR framebuffer for terrain rendering
+  FramebufferSpec hdrSpec;
+  hdrSpec.width = 800;
+  hdrSpec.height = 600;
+  hdrSpec.samples = 1;
+  hdrSpec.colorAttachments = {{FramebufferTextureFormat::RGBA16F}};
+  m_HDRFramebuffer = Framebuffer::Create(hdrSpec);
+
+  // Create LDR framebuffer for ImGui display
   FramebufferSpec spec;
   spec.width = 800;
   spec.height = 600;
   spec.samples = 1;
+  spec.colorAttachments = {{FramebufferTextureFormat::RGBA8}};
   m_Framebuffer = Framebuffer::Create(spec);
 
   // Create camera
@@ -248,6 +258,8 @@ void TerrainEditorWindow::DrawViewport() {
       m_ViewportSize.y != viewportPanelSize.y) {
     m_ViewportSize = Vec2(viewportPanelSize.x, viewportPanelSize.y);
     if (m_ViewportSize.x > 0 && m_ViewportSize.y > 0) {
+      m_HDRFramebuffer->Resize(static_cast<u32>(m_ViewportSize.x),
+                               static_cast<u32>(m_ViewportSize.y));
       m_Framebuffer->Resize(static_cast<u32>(m_ViewportSize.x),
                             static_cast<u32>(m_ViewportSize.y));
       m_Camera->SetAspectRatio(m_ViewportSize.x / m_ViewportSize.y);
@@ -259,12 +271,12 @@ void TerrainEditorWindow::DrawViewport() {
     return;
   }
 
-  // Render terrain to framebuffer
-  m_Framebuffer->Bind();
+  // Render terrain to HDR framebuffer
+  m_HDRFramebuffer->Bind();
   Renderer3D::SetViewport(0, 0, static_cast<u32>(m_ViewportSize.x),
                           static_cast<u32>(m_ViewportSize.y));
+  Renderer3D::SetClearColor(Color(0.1f, 0.15f, 0.2f));
   Renderer3D::Clear();
-  Renderer3D::SetClearColor(Color(0.2f, 0.3f, 0.4f));
 
   Renderer3D::BeginScene(*m_Camera);
 
@@ -306,6 +318,13 @@ void TerrainEditorWindow::DrawViewport() {
   }
 
   Renderer3D::EndScene();
+  m_HDRFramebuffer->Unbind();
+
+  // Resolve HDR to LDR with tonemapping
+  m_Framebuffer->Bind();
+  Renderer3D::SetViewport(0, 0, static_cast<u32>(m_ViewportSize.x),
+                          static_cast<u32>(m_ViewportSize.y));
+  PostProcess::Resolve(m_HDRFramebuffer->GetColorAttachment(0), 0, 1.0f, 2.2f);
   m_Framebuffer->Unbind();
 
   // Display framebuffer texture

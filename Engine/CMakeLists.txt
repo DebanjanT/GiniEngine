@@ -79,6 +79,18 @@ set(ENGINE_SOURCES
 
     # Material
     Renderer/Material.cpp
+
+    # Post-processing
+    Renderer/PostProcess.cpp
+
+    # Shadow Mapping
+    Renderer/ShadowMap.cpp
+
+    # IBL
+    Renderer/IBL.cpp
+
+    # SSAO
+    Renderer/SSAO.cpp
 )
 
 set(ENGINE_HEADERS

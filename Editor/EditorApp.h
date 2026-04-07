@@ -11,6 +11,7 @@
 #include "Panels/StatsPanel.h"
 #include "Panels/TerrainEditorWindow.h"
 #include "Panels/TerrainPanel.h"
+#include "Panels/WeatherPanel.h"
 #include "Renderer/Camera3D.h"
 #include "Renderer/Framebuffer.h"
 #include "Scene/Scene.h"
@@ -80,6 +81,9 @@ private:
   // Asset Browser & Material Editor
   AssetBrowserPanel m_AssetBrowserPanel;
   MaterialEditorPanel m_MaterialEditorPanel;
+
+  // Weather System
+  WeatherPanel m_WeatherPanel;
 
   // Scene Properties
   ScenePropertiesPanel m_ScenePropertiesPanel;

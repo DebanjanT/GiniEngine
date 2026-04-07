@@ -689,18 +689,20 @@ void MaterialEditorPanel::DrawNodeInspector() {
       m_IsDirty = true;
     }
 
-    // Delete node button
+    // Delete node button (red - semantic for destructive action)
     ImGui::Separator();
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.3f, 0.3f, 1.0f));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-                          ImVec4(0.9f, 0.3f, 0.3f, 1.0f));
+                          ImVec4(0.9f, 0.4f, 0.4f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive,
+                          ImVec4(0.7f, 0.2f, 0.2f, 1.0f));
     if (ImGui::Button("Delete Node", ImVec2(-1, 0))) {
       DeleteNode(node->id);
       m_SelectedNodeId = 0;
-      ImGui::PopStyleColor(2);
+      ImGui::PopStyleColor(3);
       return;
     }
-    ImGui::PopStyleColor(2);
+    ImGui::PopStyleColor(3);
     ImGui::Separator();
   }
 

@@ -31,6 +31,9 @@ void EditorApp::OnInit() {
   // Initialize 3D Renderer
   Renderer3D::Init();
 
+  // Initialize Weather System
+  WeatherSystem::Init();
+
   // Create framebuffer for viewport
   FramebufferSpec fbSpec;
   fbSpec.width = 1280;
@@ -51,13 +54,23 @@ void EditorApp::OnInit() {
 
   // Setup panels
   m_HierarchyPanel.SetScene(m_ActiveScene);
+  m_HierarchyPanel.SetVisible(true); // Show by default
   m_HierarchyPanel.SetSelectionCallback([this](Entity entity) {
     m_SelectedEntity = entity;
     m_PropertiesPanel.SetSelectedEntity(entity);
   });
 
   m_PropertiesPanel.SetScene(m_ActiveScene);
+  m_PropertiesPanel.SetVisible(true); // Show by default
   m_ScenePropertiesPanel.SetScene(m_ActiveScene);
+  m_ScenePropertiesPanel.SetVisible(true); // Show by default
+
+  // Show other default panels
+  m_StatsPanel.SetVisible(true);
+  m_ConsolePanel.SetVisible(true);
+  m_TerrainPanel.SetVisible(true);
+  m_AssetBrowserPanel.SetVisible(true);
+  m_WeatherPanel.SetVisible(true);
 
   // Create default terrain
   m_Terrain = Terrain::Create(128, 128, 50.0f);
@@ -68,6 +81,7 @@ void EditorApp::OnInit() {
 }
 
 void EditorApp::OnShutdown() {
+  WeatherSystem::Shutdown();
   Renderer3D::Shutdown();
   ImGuiLayer::Shutdown();
   GINI_INFO("Gini Editor shutdown!");
@@ -104,6 +118,9 @@ void EditorApp::OnUpdate(f32 deltaTime) {
   // Update terrain editor window
   m_TerrainEditorWindow.OnUpdate(deltaTime);
 
+  // Update weather panel
+  m_WeatherPanel.OnUpdate(deltaTime);
+
   // Update scene
   if (m_SceneState == SceneState::Play && m_ActiveScene) {
     m_ActiveScene->OnUpdate(deltaTime);
@@ -114,6 +131,9 @@ void EditorApp::OnUpdate(f32 deltaTime) {
       m_ActiveScene->HasAtmosphericSky()) {
     m_ActiveScene->GetAtmosphericSky()->Update(deltaTime);
   }
+
+  // Update weather system
+  WeatherSystem::Update(deltaTime);
 }
 
 void EditorApp::OnRender() {
@@ -240,6 +260,12 @@ void EditorApp::OnRender() {
     }
   }
 
+  // Update rain position to follow camera for immersive effect
+  WeatherSystem::UpdateRainPosition(m_EditorCamera->GetPosition());
+
+  // Render weather effects before ending scene (so it goes to framebuffer)
+  WeatherSystem::Render(m_EditorCamera->GetViewProjectionMatrix());
+
   Renderer3D::EndScene();
   m_Framebuffer->Unbind();
 
@@ -276,6 +302,7 @@ void EditorApp::OnRender() {
     m_TerrainPanel.OnImGuiRender();
     m_AssetBrowserPanel.OnImGuiRender();
     m_ScenePropertiesPanel.OnImGuiRender();
+    m_WeatherPanel.OnImGuiRender();
   }
 
   if (m_ShowDemoWindow) {
@@ -475,6 +502,8 @@ void EditorApp::DrawMenuBar() {
       ImGui::MenuItem("Stats", nullptr, &m_StatsPanel.m_Visible);
       ImGui::MenuItem("Console", nullptr, &m_ConsolePanel.m_Visible);
       ImGui::MenuItem("Asset Browser", nullptr, &m_AssetBrowserPanel.m_Visible);
+      ImGui::MenuItem("Weather System", nullptr,
+                      &m_WeatherPanel.GetVisibleRef());
       ImGui::Separator();
       ImGui::MenuItem("ImGui Demo", nullptr, &m_ShowDemoWindow);
       ImGui::EndMenu();

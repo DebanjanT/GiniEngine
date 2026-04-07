@@ -50,6 +50,7 @@ struct CloudSettings {
   f32 height = 2000.0f;    // Cloud layer base height in meters
   f32 thickness = 1500.0f; // Cloud layer thickness in meters
   f32 speed = 1.0f;        // Wind speed multiplier
+  f32 quality = 0.5f;      // 0-1, performance vs quality tradeoff
 };
 
 class AtmosphericSky {

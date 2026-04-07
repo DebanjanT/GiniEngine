@@ -227,104 +227,131 @@ void AssetBrowserPanel::DrawAssetItem(const AssetMetadata &asset) {
   if (icon) {
     ImGui::ImageButton("##thumb", (ImTextureID)(intptr_t)icon->GetID(),
                        buttonSize, ImVec2(0, 1), ImVec2(1, 0));
+    ImGui::PopStyleColor(); // Pop the transparent button background
   } else {
     // Fallback: colored button with type indicator
     ImVec4 color;
     const char *typeChar;
 
     if (asset.isDirectory) {
-      color = ImVec4(0.9f, 0.7f, 0.2f, 1.0f);
-      typeChar = "D";
+      // Yellow for directory type
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.9f, 0.7f, 0.2f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                            ImVec4(1.0f, 0.8f, 0.3f, 1.0f));
+      ImGui::Button("D", buttonSize);
+      ImGui::PopStyleColor(3); // Pop directory colors + transparent background
     } else {
       switch (asset.type) {
       case AssetType::Texture:
-        color = ImVec4(0.2f, 0.7f, 0.9f, 1.0f);
-        typeChar = "T";
+        // Green for texture type
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.3f, 0.7f, 0.3f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                              ImVec4(0.4f, 0.8f, 0.4f, 1.0f));
+        ImGui::Button("T", buttonSize);
+        ImGui::PopStyleColor(3); // Pop texture colors + transparent background
         break;
       case AssetType::Material:
-        color = ImVec4(0.9f, 0.3f, 0.5f, 1.0f);
-        typeChar = "M";
+        // Blue for model type (using primary blue)
+        ImGui::PushStyleColor(ImGuiCol_Button,
+                              ImVec4(0.26f, 0.59f, 0.98f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                              ImVec4(0.39f, 0.68f, 1.00f, 1.0f));
+        ImGui::Button("M", buttonSize);
+        ImGui::PopStyleColor(3); // Pop material colors + transparent background
         break;
       case AssetType::Mesh:
-        color = ImVec4(0.3f, 0.9f, 0.5f, 1.0f);
-        typeChar = "3D";
+        // Blue for model type (using primary blue)
+        ImGui::PushStyleColor(ImGuiCol_Button,
+                              ImVec4(0.26f, 0.59f, 0.98f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                              ImVec4(0.39f, 0.68f, 1.00f, 1.0f));
+        ImGui::Button("3D", buttonSize);
+        ImGui::PopStyleColor(3); // Pop mesh colors + transparent background
         break;
       case AssetType::Scene:
-        color = ImVec4(0.5f, 0.3f, 0.9f, 1.0f);
-        typeChar = "S";
+        // Yellow for scene type
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.6f, 0.2f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                              ImVec4(0.8f, 0.7f, 0.3f, 1.0f));
+        ImGui::Button("S", buttonSize);
+        ImGui::PopStyleColor(3); // Pop scene colors + transparent background
         break;
       case AssetType::Audio:
-        color = ImVec4(0.9f, 0.5f, 0.2f, 1.0f);
-        typeChar = "A";
+        // Purple for audio type
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.3f, 0.7f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                              ImVec4(0.7f, 0.4f, 0.8f, 1.0f));
+        ImGui::Button("A", buttonSize);
+        ImGui::PopStyleColor(3); // Pop audio colors + transparent background
         break;
       default:
-        color = ImVec4(0.5f, 0.5f, 0.5f, 1.0f);
-        typeChar = "?";
+        // Gray for unknown type (using secondary gradient)
+        ImGui::PushStyleColor(ImGuiCol_Button,
+                              ImVec4(0.25f, 0.28f, 0.32f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                              ImVec4(0.35f, 0.38f, 0.42f, 1.0f));
+        ImGui::Button("?", buttonSize);
+        ImGui::PopStyleColor(3); // Pop default colors + transparent background
         break;
       }
     }
 
-    ImGui::PushStyleColor(ImGuiCol_Button, color);
-    ImGui::Button(typeChar, buttonSize);
-    ImGui::PopStyleColor();
-  }
-
-  ImGui::PopStyleColor();
-
-  // Handle double-click
-  if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
-    if (asset.isDirectory) {
-      NavigateTo(asset.absolutePath);
-    } else {
-      // Open asset (e.g., material editor)
-      GINI_INFO("Opening asset: ", asset.name);
-      // TODO: Open appropriate editor based on asset type
+    // Handle double-click
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
+      if (asset.isDirectory) {
+        NavigateTo(asset.absolutePath);
+      } else {
+        // Open asset (e.g., material editor)
+        GINI_INFO("Opening asset: ", asset.name);
+        // TODO: Open appropriate editor based on asset type
+      }
     }
-  }
 
-  // Drag source
-  if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
-    const char *payloadType = PAYLOAD_ASSET;
-    if (asset.type == AssetType::Texture)
-      payloadType = PAYLOAD_TEXTURE;
-    else if (asset.type == AssetType::Material)
-      payloadType = PAYLOAD_MATERIAL;
+    // Drag source
+    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+      const char *payloadType = PAYLOAD_ASSET;
+      if (asset.type == AssetType::Texture)
+        payloadType = PAYLOAD_TEXTURE;
+      else if (asset.type == AssetType::Material)
+        payloadType = PAYLOAD_MATERIAL;
 
-    std::string pathStr = asset.absolutePath.string();
-    ImGui::SetDragDropPayload(payloadType, pathStr.c_str(), pathStr.size() + 1);
-    ImGui::Text("%s", asset.name.c_str());
-    ImGui::EndDragDropSource();
-  }
-
-  // Tooltip
-  if (ImGui::IsItemHovered()) {
-    ImGui::BeginTooltip();
-    ImGui::Text("%s", asset.name.c_str());
-    if (!asset.isDirectory) {
-      ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Type: %s",
-                         AssetRegistry::AssetTypeToString(asset.type));
+      std::string pathStr = asset.absolutePath.string();
+      ImGui::SetDragDropPayload(payloadType, pathStr.c_str(),
+                                pathStr.size() + 1);
+      ImGui::Text("%s", asset.name.c_str());
+      ImGui::EndDragDropSource();
     }
-    ImGui::EndTooltip();
-  }
 
-  // Draw name (truncated if too long)
-  std::string displayName = asset.name;
-  float textWidth = ImGui::CalcTextSize(displayName.c_str()).x;
-  if (textWidth > m_ThumbnailSize) {
-    // Truncate with ellipsis
-    while (textWidth > m_ThumbnailSize - 20 && displayName.length() > 3) {
-      displayName = displayName.substr(0, displayName.length() - 1);
-      textWidth = ImGui::CalcTextSize((displayName + "...").c_str()).x;
+    // Tooltip
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      ImGui::Text("%s", asset.name.c_str());
+      if (!asset.isDirectory) {
+        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Type: %s",
+                           AssetRegistry::AssetTypeToString(asset.type));
+      }
+      ImGui::EndTooltip();
     }
-    displayName += "...";
+
+    // Draw name (truncated if too long)
+    std::string displayName = asset.name;
+    float textWidth = ImGui::CalcTextSize(displayName.c_str()).x;
+    if (textWidth > m_ThumbnailSize) {
+      // Truncate with ellipsis
+      while (textWidth > m_ThumbnailSize - 20 && displayName.length() > 3) {
+        displayName = displayName.substr(0, displayName.length() - 1);
+        textWidth = ImGui::CalcTextSize((displayName + "...").c_str()).x;
+      }
+      displayName += "...";
+    }
+
+    float textX =
+        (m_ThumbnailSize - ImGui::CalcTextSize(displayName.c_str()).x) * 0.5f;
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + textX);
+    ImGui::TextWrapped("%s", displayName.c_str());
+
+    ImGui::PopID();
   }
-
-  float textX =
-      (m_ThumbnailSize - ImGui::CalcTextSize(displayName.c_str()).x) * 0.5f;
-  ImGui::SetCursorPosX(ImGui::GetCursorPosX() + textX);
-  ImGui::TextWrapped("%s", displayName.c_str());
-
-  ImGui::PopID();
 }
 
 void AssetBrowserPanel::DrawContextMenu() {

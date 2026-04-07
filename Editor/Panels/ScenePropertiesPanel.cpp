@@ -140,6 +140,27 @@ void ScenePropertiesPanel::OnImGuiRender() {
         ImGui::DragFloat("Thickness (m)", &clouds.thickness, 100.0f, 500.0f,
                          5000.0f);
         ImGui::DragFloat("Wind Speed", &clouds.speed, 0.1f, 0.0f, 5.0f);
+
+        ImGui::Spacing();
+        ImGui::Text("Performance Settings");
+        ImGui::DragFloat("Quality", &clouds.quality, 0.05f, 0.0f, 1.0f);
+        ImGui::SameLine();
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip("0 = Maximum Performance\n1.0 = Maximum Quality");
+        }
+
+        // Performance presets
+        if (ImGui::Button("Low Quality")) {
+          clouds.quality = 0.0f;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Medium Quality")) {
+          clouds.quality = 0.5f;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("High Quality")) {
+          clouds.quality = 1.0f;
+        }
       }
 
       ImGui::Spacing();

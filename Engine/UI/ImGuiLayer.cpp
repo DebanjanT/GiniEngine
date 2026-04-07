@@ -225,81 +225,99 @@ void ImGuiLayer::SetDarkTheme() {
 
   auto &colors = ImGui::GetStyle().Colors;
 
-  // Base (bluish dark)
-  colors[ImGuiCol_WindowBg] = ImVec4(0.07f, 0.08f, 0.09f, 1.0f);
-  colors[ImGuiCol_ChildBg] = ImVec4(0.09f, 0.10f, 0.11f, 1.0f);
-  colors[ImGuiCol_PopupBg] = ImVec4(0.10f, 0.11f, 0.12f, 1.0f);
-  colors[ImGuiCol_MenuBarBg] = ImVec4(0.10f, 0.12f, 0.15f, 1.00f);
+  // Base (grayish dark theme)
+  colors[ImGuiCol_WindowBg] = ImVec4(0.15f, 0.15f, 0.17f, 1.0f);
+  colors[ImGuiCol_ChildBg] = ImVec4(0.18f, 0.18f, 0.20f, 1.0f);
+  colors[ImGuiCol_PopupBg] = ImVec4(0.20f, 0.20f, 0.23f, 1.0f);
+  colors[ImGuiCol_MenuBarBg] = ImVec4(0.12f, 0.12f, 0.14f, 1.00f);
 
-  // Borders (very subtle)
-  colors[ImGuiCol_Border] = ImVec4(0.20f, 0.25f, 0.30f, 0.30f);
+  // Borders (subtle gray)
+  colors[ImGuiCol_Border] = ImVec4(0.30f, 0.30f, 0.33f, 0.40f);
   colors[ImGuiCol_BorderShadow] = ImVec4(0.00f, 0.00f, 0.00f, 0.00f);
 
-  // Text
-  colors[ImGuiCol_Text] = ImVec4(0.85f, 0.88f, 0.92f, 1.00f);
-  colors[ImGuiCol_TextDisabled] = ImVec4(0.45f, 0.50f, 0.55f, 1.00f);
+  // Text (slightly dimmed white)
+  colors[ImGuiCol_Text] = ImVec4(0.90f, 0.90f, 0.92f, 1.00f);
+  colors[ImGuiCol_TextDisabled] = ImVec4(0.50f, 0.50f, 0.55f, 1.00f);
 
-  // Primary accent (Frostbite blue)
-  ImVec4 accent = ImVec4(0.20f, 0.55f, 0.85f, 1.00f);
-  ImVec4 accentHover = ImVec4(0.30f, 0.65f, 0.95f, 1.00f);
-  ImVec4 accentActive = ImVec4(0.15f, 0.45f, 0.75f, 1.00f);
+  // Primary blue accent
+  ImVec4 primaryBlue = ImVec4(0.26f, 0.59f, 0.98f, 1.00f);
+  ImVec4 primaryBlueHover = ImVec4(0.39f, 0.68f, 1.00f, 1.00f);
+  ImVec4 primaryBlueActive = ImVec4(0.20f, 0.50f, 0.85f, 1.00f);
 
-  // Headers
-  colors[ImGuiCol_Header] = ImVec4(accent.x, accent.y, accent.z, 0.35f);
-  colors[ImGuiCol_HeaderHovered] =
-      ImVec4(accentHover.x, accentHover.y, accentHover.z, 0.55f);
-  colors[ImGuiCol_HeaderActive] =
-      ImVec4(accentActive.x, accentActive.y, accentActive.z, 0.75f);
+  // Secondary gradient (gray with blue tint)
+  ImVec4 secondaryGrad = ImVec4(0.25f, 0.28f, 0.32f, 1.00f);
+  ImVec4 secondaryGradHover = ImVec4(0.35f, 0.38f, 0.42f, 1.00f);
+  ImVec4 secondaryGradActive = ImVec4(0.20f, 0.23f, 0.27f, 1.00f);
 
-  // Buttons
-  colors[ImGuiCol_Button] = ImVec4(accent.x, accent.y, accent.z, 0.35f);
-  colors[ImGuiCol_ButtonHovered] =
-      ImVec4(accentHover.x, accentHover.y, accentHover.z, 0.60f);
-  colors[ImGuiCol_ButtonActive] =
-      ImVec4(accentActive.x, accentActive.y, accentActive.z, 0.80f);
+  // Headers (gradient secondary)
+  colors[ImGuiCol_Header] = secondaryGrad;
+  colors[ImGuiCol_HeaderHovered] = secondaryGradHover;
+  colors[ImGuiCol_HeaderActive] = secondaryGradActive;
 
-  // Frame
-  colors[ImGuiCol_FrameBg] = ImVec4(0.10f, 0.13f, 0.16f, 1.00f);
-  colors[ImGuiCol_FrameBgHovered] = ImVec4(0.14f, 0.18f, 0.22f, 1.00f);
-  colors[ImGuiCol_FrameBgActive] = ImVec4(0.12f, 0.16f, 0.20f, 1.00f);
+  // Buttons (primary blue for main actions, gradient for secondary)
+  colors[ImGuiCol_Button] = primaryBlue;
+  colors[ImGuiCol_ButtonHovered] = primaryBlueHover;
+  colors[ImGuiCol_ButtonActive] = primaryBlueActive;
 
-  // Tabs (flat, subtle)
-  colors[ImGuiCol_Tab] = ImVec4(0.08f, 0.09f, 0.10f, 1.0f);
-  colors[ImGuiCol_TabActive] = ImVec4(0.12f, 0.14f, 0.16f, 1.0f);
-  colors[ImGuiCol_TabHovered] = ImVec4(0.18f, 0.22f, 0.27f, 1.00f);
-  colors[ImGuiCol_TabUnfocused] = ImVec4(0.08f, 0.10f, 0.13f, 1.00f);
-  colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.10f, 0.12f, 0.15f, 1.00f);
+  // Frame (grayish)
+  colors[ImGuiCol_FrameBg] = ImVec4(0.20f, 0.22f, 0.25f, 1.00f);
+  colors[ImGuiCol_FrameBgHovered] = ImVec4(0.25f, 0.27f, 0.30f, 1.00f);
+  colors[ImGuiCol_FrameBgActive] = ImVec4(0.22f, 0.24f, 0.27f, 1.00f);
 
-  // Title
-  colors[ImGuiCol_TitleBg] = ImVec4(0.08f, 0.10f, 0.13f, 1.00f);
-  colors[ImGuiCol_TitleBgActive] = ImVec4(0.10f, 0.12f, 0.15f, 1.00f);
-  colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.08f, 0.10f, 0.13f, 1.00f);
+  // Tabs (gradient secondary)
+  colors[ImGuiCol_Tab] = ImVec4(0.18f, 0.20f, 0.23f, 1.0f);
+  colors[ImGuiCol_TabActive] = ImVec4(0.22f, 0.24f, 0.27f, 1.0f);
+  colors[ImGuiCol_TabHovered] = ImVec4(0.28f, 0.30f, 0.33f, 1.00f);
+  colors[ImGuiCol_TabUnfocused] = ImVec4(0.15f, 0.17f, 0.20f, 1.00f);
+  colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.18f, 0.20f, 0.23f, 1.00f);
 
-  // Scrollbar
-  colors[ImGuiCol_ScrollbarBg] = ImVec4(0.06f, 0.08f, 0.10f, 1.00f);
-  colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.12f, 0.15f, 0.18f, 1.00f);
-  colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.18f, 0.22f, 0.27f, 1.00f);
-  colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.22f, 0.27f, 0.32f, 1.00f);
+  // Title (gradient secondary)
+  colors[ImGuiCol_TitleBg] = ImVec4(0.12f, 0.14f, 0.17f, 1.00f);
+  colors[ImGuiCol_TitleBgActive] = ImVec4(0.16f, 0.18f, 0.21f, 1.00f);
+  colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.10f, 0.12f, 0.15f, 1.00f);
 
-  // Separator (very subtle blue hint)
-  colors[ImGuiCol_Separator] = ImVec4(1, 1, 1, 0.06f);
-  colors[ImGuiCol_SeparatorHovered] = ImVec4(0.30f, 0.50f, 0.70f, 0.50f);
-  colors[ImGuiCol_SeparatorActive] = ImVec4(0.35f, 0.60f, 0.85f, 0.70f);
+  // Scrollbar (grayish with blue accent on hover)
+  colors[ImGuiCol_ScrollbarBg] = ImVec4(0.10f, 0.12f, 0.15f, 1.00f);
+  colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.20f, 0.22f, 0.25f, 1.00f);
+  colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.30f, 0.45f, 0.65f, 1.00f);
+  colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.35f, 0.55f, 0.75f, 1.00f);
 
-  // Resize grip
-  colors[ImGuiCol_ResizeGrip] = ImVec4(0.20f, 0.30f, 0.40f, 0.30f);
-  colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.30f, 0.50f, 0.70f, 0.60f);
-  colors[ImGuiCol_ResizeGripActive] = ImVec4(0.35f, 0.60f, 0.85f, 0.80f);
+  // Separator (subtle gray)
+  colors[ImGuiCol_Separator] = ImVec4(0.40f, 0.40f, 0.45f, 0.30f);
+  colors[ImGuiCol_SeparatorHovered] = ImVec4(0.45f, 0.55f, 0.65f, 0.50f);
+  colors[ImGuiCol_SeparatorActive] = ImVec4(0.50f, 0.60f, 0.70f, 0.70f);
 
-  // Rounding (Frostbite is sharper)
+  // Resize grip (blue accent)
+  colors[ImGuiCol_ResizeGrip] = ImVec4(0.25f, 0.35f, 0.45f, 0.30f);
+  colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.35f, 0.50f, 0.70f, 0.60f);
+  colors[ImGuiCol_ResizeGripActive] = ImVec4(0.40f, 0.60f, 0.85f, 0.80f);
+
+  // Checkboxes and radio buttons (blue accent)
+  colors[ImGuiCol_CheckMark] = primaryBlue;
+  colors[ImGuiCol_SliderGrab] = primaryBlue;
+  colors[ImGuiCol_SliderGrabActive] = primaryBlueActive;
+  colors[ImGuiCol_ResizeGripActive] = primaryBlueActive;
+
+  // Progress bar (gradient)
+  colors[ImGuiCol_PlotHistogram] = primaryBlue;
+  colors[ImGuiCol_PlotHistogramHovered] = primaryBlueHover;
+  colors[ImGuiCol_PlotLines] = primaryBlue;
+  colors[ImGuiCol_PlotLinesHovered] = primaryBlueHover;
+
+  // Rounding (modern rounded style)
   auto &style = ImGui::GetStyle();
-  style.WindowRounding = 2;
-  style.FrameRounding = 1;
-  style.PopupRounding = 3;
-  style.ScrollbarRounding = 6;
-  style.GrabRounding = 2;
-  style.TabRounding = 2;
-  style.ChildRounding = 3;
+  style.WindowRounding = 6;
+  style.FrameRounding = 4;
+  style.PopupRounding = 6;
+  style.ScrollbarRounding = 4;
+  style.GrabRounding = 3;
+  style.TabRounding = 4;
+  style.ChildRounding = 4;
+
+  // Spacing and padding adjustments
+  style.ItemSpacing = ImVec2(8, 4);
+  style.FramePadding = ImVec2(4, 3);
+  style.CellPadding = ImVec2(4, 2);
 }
 
 void ImGuiLayer::SetLightTheme() { ImGui::StyleColorsLight(); }

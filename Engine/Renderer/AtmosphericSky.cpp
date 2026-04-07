@@ -51,13 +51,14 @@ uniform float u_CloudCoverage;
 uniform float u_CloudDensity;
 uniform float u_CloudHeight;
 uniform float u_CloudThickness;
+uniform float u_CloudQuality;
 uniform bool u_CloudsEnabled;
 
 const float PI = 3.14159265359;
 const int NUM_SAMPLES = 16;
 const int NUM_LIGHT_SAMPLES = 8;
-const int CLOUD_SAMPLES = 32;
-const int CLOUD_LIGHT_SAMPLES = 6;
+const int CLOUD_SAMPLES = 16;  // Reduced from 32
+const int CLOUD_LIGHT_SAMPLES = 4;  // Reduced from 6
 
 // Hash functions for noise
 float hash(float n) { return fract(sin(n) * 43758.5453123); }
@@ -91,8 +92,8 @@ float fbm(vec3 p, int octaves) {
     return value;
 }
 
-// Cloud density function
-float cloudDensity(vec3 pos) {
+// Optimized cloud density function with LOD
+float cloudDensity(vec3 pos, float lod) {
     // Normalize position for cloud layer
     float heightFraction = (pos.y - u_CloudHeight) / u_CloudThickness;
     if (heightFraction < 0.0 || heightFraction > 1.0) return 0.0;
@@ -100,15 +101,21 @@ float cloudDensity(vec3 pos) {
     // Height-based density falloff (rounder at bottom, wispy at top)
     float heightGradient = smoothstep(0.0, 0.2, heightFraction) * smoothstep(1.0, 0.7, heightFraction);
     
-    // Sample noise at different scales
+    // Sample noise at different scales with LOD
     vec3 windOffset = vec3(u_Time * 0.01, 0.0, u_Time * 0.005);
     vec3 samplePos = pos * 0.0001 + windOffset;
     
-    float baseShape = fbm(samplePos * 1.0, 4);
-    float detail = fbm(samplePos * 4.0 + vec3(100.0), 3) * 0.5;
-    float microDetail = fbm(samplePos * 16.0, 2) * 0.25;
+    // LOD-based noise sampling
+    float lodFactor = clamp(lod * 2.0, 0.5, 4.0);
+    float baseShape = fbm(samplePos * lodFactor, 3);
     
-    float density = baseShape + detail * 0.5 + microDetail * 0.25;
+    // Only sample detail at close range
+    float detail = 0.0;
+    if (lod < 0.5) {
+        detail = fbm(samplePos * 4.0 * lodFactor + vec3(100.0), 2) * 0.3;
+    }
+    
+    float density = baseShape + detail;
     
     // Apply coverage threshold
     density = smoothstep(1.0 - u_CloudCoverage, 1.0, density);
@@ -165,8 +172,8 @@ float GetDensity(float height, float scaleHeight) {
     return exp(-height / scaleHeight);
 }
 
-// March through clouds
-vec4 marchClouds(vec3 rayOrigin, vec3 rayDir, vec3 sunDir, float maxDist) {
+// Optimized cloud marching with LOD and early exits
+vec4 marchClouds(vec3 rayOrigin, vec3 rayDir, vec3 sunDir, float maxDist, float distance) {
     float cloudBottom = u_CloudHeight;
     float cloudTop = u_CloudHeight + u_CloudThickness;
     
@@ -177,7 +184,15 @@ vec4 marchClouds(vec3 rayOrigin, vec3 rayDir, vec3 sunDir, float maxDist) {
     float endDist = min(cloudHit.y, maxDist);
     if (startDist >= endDist) return vec4(0.0);
     
-    float stepSize = (endDist - startDist) / float(CLOUD_SAMPLES);
+    // LOD based on distance and quality setting
+    float lod = distance / 10000.0; // LOD based on distance
+    lod = mix(lod, lod * 2.0, 1.0 - u_CloudQuality); // Quality affects LOD
+    
+    // Adaptive sample count based on LOD and quality
+    int maxSamples = int(mix(float(CLOUD_SAMPLES), 8.0, u_CloudQuality));
+    int minSamples = int(mix(4.0, 2.0, u_CloudQuality));
+    int samples = int(mix(float(maxSamples), float(minSamples), clamp(lod, 0.0, 1.0)));
+    float stepSize = (endDist - startDist) / float(samples);
     
     vec3 lightColor = u_SunColor * u_SunIntensity;
     float transmittance = 1.0;
@@ -187,24 +202,31 @@ vec4 marchClouds(vec3 rayOrigin, vec3 rayDir, vec3 sunDir, float maxDist) {
     float cosTheta = dot(rayDir, sunDir);
     float phase = mix(HenyeyGreenstein(cosTheta, 0.6), HenyeyGreenstein(cosTheta, -0.3), 0.3);
     
-    for (int i = 0; i < CLOUD_SAMPLES; i++) {
+    // Pre-calculate ambient
+    vec3 ambient = vec3(0.4, 0.5, 0.7) * 0.3;
+    
+    for (int i = 0; i < samples; i++) {
         float t = startDist + (float(i) + 0.5) * stepSize;
         vec3 pos = rayOrigin + rayDir * t;
         
-        float density = cloudDensity(pos);
-        if (density > 0.001) {
-            // Light marching towards sun
+        float density = cloudDensity(pos, lod);
+        if (density > 0.01) { // Increased threshold for early exit
+            // Simplified light calculation for distant clouds
             float lightTransmittance = 1.0;
-            float lightStepSize = u_CloudThickness / float(CLOUD_LIGHT_SAMPLES);
-            
-            for (int j = 0; j < CLOUD_LIGHT_SAMPLES; j++) {
-                vec3 lightPos = pos + sunDir * float(j) * lightStepSize;
-                float lightDensity = cloudDensity(lightPos);
-                lightTransmittance *= exp(-lightDensity * lightStepSize * 0.5);
+            float lodThreshold = mix(0.5, 0.3, u_CloudQuality); // Quality affects threshold
+            if (lod < lodThreshold) {
+                // Full light marching only for close clouds
+                int lightSamples = int(mix(float(CLOUD_LIGHT_SAMPLES), 2.0, u_CloudQuality));
+                float lightStepSize = u_CloudThickness / float(lightSamples);
+                for (int j = 0; j < lightSamples; j++) {
+                    vec3 lightPos = pos + sunDir * float(j) * lightStepSize;
+                    float lightDensity = cloudDensity(lightPos, lod);
+                    lightTransmittance *= exp(-lightDensity * lightStepSize * 0.5);
+                }
+            } else {
+                // Approximate light for distant clouds
+                lightTransmittance = mix(0.7, 0.8, u_CloudQuality); // Quality affects approximation
             }
-            
-            // Ambient light from sky
-            vec3 ambient = vec3(0.4, 0.5, 0.7) * 0.3;
             
             // Combine direct and ambient lighting
             vec3 lighting = lightColor * lightTransmittance * phase + ambient;
@@ -218,7 +240,8 @@ vec4 marchClouds(vec3 rayOrigin, vec3 rayDir, vec3 sunDir, float maxDist) {
             scatteredLight += transmittance * integScatter;
             transmittance *= sampleTransmittance;
             
-            if (transmittance < 0.01) break;
+            // Early exit with higher threshold
+            if (transmittance < 0.05) break;
         }
     }
     
@@ -323,14 +346,20 @@ void main() {
         skyColor = groundLit * extinction + skyColor;
     }
     
-    // Volumetric clouds
+    // Volumetric clouds with optimizations
     if (u_CloudsEnabled && rayDir.y > -0.1) {
-        // Use world-space ray for clouds (scaled down for cloud layer)
-        vec3 cloudRayOrigin = vec3(0.0, 0.0, 0.0);
-        vec4 clouds = marchClouds(cloudRayOrigin, rayDir, sunDir, 100000.0);
+        // Calculate distance for LOD
+        float distance = length(rayDir);
         
-        // Blend clouds with sky
-        skyColor = mix(skyColor, clouds.rgb, clouds.a);
+        // Skip clouds for very distant rays (performance optimization)
+        if (distance < 50000.0) {
+            // Use world-space ray for clouds (scaled down for cloud layer)
+            vec3 cloudRayOrigin = vec3(0.0, 0.0, 0.0);
+            vec4 clouds = marchClouds(cloudRayOrigin, rayDir, sunDir, 100000.0, distance);
+            
+            // Blend clouds with sky
+            skyColor = mix(skyColor, clouds.rgb, clouds.a);
+        }
     }
     
     // Tone mapping
@@ -431,6 +460,7 @@ void AtmosphericSky::Render(const Camera3D &camera) {
   m_SkyShader->SetFloat("u_CloudDensity", m_Clouds.density);
   m_SkyShader->SetFloat("u_CloudHeight", m_Clouds.height);
   m_SkyShader->SetFloat("u_CloudThickness", m_Clouds.thickness);
+  m_SkyShader->SetFloat("u_CloudQuality", m_Clouds.quality);
 
   glBindVertexArray(m_SkyVAO);
   glDrawArrays(GL_TRIANGLES, 0, 6);

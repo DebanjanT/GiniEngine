@@ -22,7 +22,7 @@ public:
 
 public:
   std::string m_Name;
-  bool m_Visible = true;
+  bool m_Visible = false; // Default to hidden
 };
 
 } // namespace Gini

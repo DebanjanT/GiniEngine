@@ -12,6 +12,7 @@ set(EDITOR_SOURCES
     Panels/MaterialEditorPanel.cpp
     Panels/ProjectLauncher.cpp
     Panels/ScenePropertiesPanel.cpp
+    Panels/WeatherPanel.cpp
     Utils/FileDialog.mm
 )
 
@@ -28,6 +29,7 @@ set(EDITOR_HEADERS
     Panels/MaterialEditorPanel.h
     Panels/ProjectLauncher.h
     Panels/ScenePropertiesPanel.h
+    Panels/WeatherPanel.h
     Utils/FileDialog.h
 )
 

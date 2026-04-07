@@ -1,7 +1,5 @@
 #include "ThreadAnalysisPanel.h"
-#include "Assets/AssetManager.h"
 #include "Core/Logger.h"
-#include "Network/Network.h"
 #include <imgui.h>
 #include <sstream>
 #include <thread>
@@ -185,7 +183,7 @@ void ThreadAnalysisPanel::DrawThreadList() {
     }
     ImGui::NextColumn();
 
-    ImGui::Text("%llu", stats.tasksCompleted);
+    ImGui::Text("%s", std::to_string(stats.tasksCompleted).c_str());
     ImGui::NextColumn();
 
     ImGui::Text("%.2f", stats.lastTaskDurationMs);

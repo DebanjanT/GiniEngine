@@ -1,5 +1,14 @@
 # Gini Editor CMakeLists.txt
 
+# Platform-specific file dialog implementation
+if(APPLE)
+    set(FILEDIALOG_SOURCE Utils/FileDialog.mm)
+elseif(WIN32)
+    set(FILEDIALOG_SOURCE Utils/FileDialog_Win32.cpp)
+elseif(UNIX)
+    set(FILEDIALOG_SOURCE Utils/FileDialog_Linux.cpp)
+endif()
+
 set(EDITOR_SOURCES
     EditorApp.cpp
     Panels/SceneHierarchyPanel.cpp
@@ -14,7 +23,7 @@ set(EDITOR_SOURCES
     Panels/ScenePropertiesPanel.cpp
     Panels/WeatherPanel.cpp
     Panels/ThreadAnalysisPanel.cpp
-    Utils/FileDialog.mm
+    ${FILEDIALOG_SOURCE}
 )
 
 set(EDITOR_HEADERS
@@ -46,9 +55,11 @@ target_link_libraries(GiniEditor PRIVATE
     GiniEngine
 )
 
-# Link Cocoa framework for native file dialogs on macOS
+# Platform-specific link dependencies for native file dialogs
 if(APPLE)
     target_link_libraries(GiniEditor PRIVATE "-framework Cocoa")
+elseif(WIN32)
+    target_link_libraries(GiniEditor PRIVATE comdlg32 ole32 shell32)
 endif()
 
 set_target_properties(GiniEditor PROPERTIES

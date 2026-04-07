@@ -132,65 +132,89 @@ void AssetBrowserPanel::DrawDirectoryTree() {
 
 void AssetBrowserPanel::DrawDirectoryTreeNode(
     const std::filesystem::path &directory) {
-  if (!std::filesystem::exists(directory))
+  std::error_code ec;
+  if (!std::filesystem::exists(directory, ec) || ec)
     return;
 
-  std::error_code dirError;
-  for (const auto &entry : std::filesystem::directory_iterator(
-           directory, std::filesystem::directory_options::skip_permission_denied,
-           dirError)) {
-    if (dirError) {
-      return;
-    }
+  // Collect directory entries first to avoid filesystem iteration during ImGui rendering
+  struct DirEntry {
+    std::filesystem::path path;
+    std::string name;
+    bool hasSubdirs = false;
+  };
+  std::vector<DirEntry> entries;
 
-    if (!entry.is_directory())
+  std::error_code dirError;
+  auto dirIt = std::filesystem::directory_iterator(
+      directory, std::filesystem::directory_options::skip_permission_denied,
+      dirError);
+  if (dirError)
+    return;
+
+  for (const auto &entry : dirIt) {
+    std::error_code entryEc;
+    if (entry.is_symlink(entryEc) || entryEc)
       continue;
-    if (entry.is_symlink())
+    if (!entry.is_directory(entryEc) || entryEc)
       continue;
 
     std::string filename = entry.path().filename().string();
     if (filename.empty() || filename[0] == '.')
-      continue; // Skip hidden
+      continue;
 
+    DirEntry de;
+    de.path = entry.path();
+    de.name = filename;
+
+    std::error_code subDirError;
+    auto subIt = std::filesystem::directory_iterator(
+        entry.path(),
+        std::filesystem::directory_options::skip_permission_denied,
+        subDirError);
+    if (!subDirError) {
+      for (const auto &subEntry : subIt) {
+        if (subDirError)
+          break;
+        std::error_code subEc;
+        if (subEntry.is_symlink(subEc) || subEc)
+          continue;
+        if (!subEntry.is_directory(subEc) || subEc)
+          continue;
+        std::string subName = subEntry.path().filename().string();
+        if (!subName.empty() && subName[0] != '.') {
+          de.hasSubdirs = true;
+          break;
+        }
+      }
+    }
+
+    entries.push_back(std::move(de));
+  }
+
+  std::sort(entries.begin(), entries.end(),
+            [](const DirEntry &a, const DirEntry &b) {
+              return a.name < b.name;
+            });
+
+  for (const auto &de : entries) {
     ImGuiTreeNodeFlags flags =
         ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
 
-    // Check if this directory has subdirectories
-    bool hasSubdirs = false;
-    std::error_code subDirError;
-    for (const auto &subEntry : std::filesystem::directory_iterator(
-             entry.path(),
-             std::filesystem::directory_options::skip_permission_denied,
-             subDirError)) {
-      if (subDirError) {
-        break;
-      }
-      std::string subName = subEntry.path().filename().string();
-      if (subEntry.is_directory() && !subName.empty() && subName[0] != '.') {
-        if (subEntry.is_symlink()) {
-          continue;
-        }
-        hasSubdirs = true;
-        break;
-      }
-    }
-
-    if (!hasSubdirs) {
+    if (!de.hasSubdirs) {
       flags |= ImGuiTreeNodeFlags_Leaf;
     }
-
-    if (entry.path() == m_CurrentDirectory) {
+    if (de.path == m_CurrentDirectory) {
       flags |= ImGuiTreeNodeFlags_Selected;
     }
 
-    bool opened = ImGui::TreeNodeEx(filename.c_str(), flags);
+    bool opened = ImGui::TreeNodeEx(de.name.c_str(), flags);
 
     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
-      NavigateTo(entry.path());
+      NavigateTo(de.path);
     }
 
     if (opened) {
-      DrawDirectoryTreeNode(entry.path());
+      DrawDirectoryTreeNode(de.path);
       ImGui::TreePop();
     }
   }

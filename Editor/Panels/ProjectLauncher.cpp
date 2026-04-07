@@ -10,6 +10,11 @@
 #ifdef __APPLE__
 #include <limits.h>
 #include <mach-o/dyld.h>
+#elif defined(_WIN32)
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <Windows.h>
 #endif
 
 namespace Gini {
@@ -19,6 +24,11 @@ static std::filesystem::path GetExecutablePath() {
   char path[PATH_MAX];
   uint32_t size = sizeof(path);
   if (_NSGetExecutablePath(path, &size) == 0) {
+    return std::filesystem::path(path).parent_path();
+  }
+#elif defined(_WIN32)
+  char path[MAX_PATH];
+  if (GetModuleFileNameA(NULL, path, MAX_PATH) > 0) {
     return std::filesystem::path(path).parent_path();
   }
 #endif

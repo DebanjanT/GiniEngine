@@ -66,8 +66,14 @@ public:
   
   const std::unordered_map<u64, AssetMetadata>& GetAllAssets() const { return m_Assets; }
   
-  void SetRootPath(const std::filesystem::path& path) { m_RootPath = path; }
-  const std::filesystem::path& GetRootPath() const { return m_RootPath; }
+  void SetRootPath(const std::filesystem::path& path) {
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    m_RootPath = path;
+  }
+  std::filesystem::path GetRootPath() const {
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    return m_RootPath;
+  }
 
 private:
   AssetRegistry() = default;

@@ -13,7 +13,7 @@
 
 namespace Gini {
 
-enum class AssetType {
+enum class LoadableAssetType {
     Unknown,
     Texture,
     Shader,
@@ -23,9 +23,9 @@ enum class AssetType {
     Script
 };
 
-struct AssetMetadata {
+struct LoadableAssetInfo {
     std::string path;
-    AssetType type = AssetType::Unknown;
+    LoadableAssetType type = LoadableAssetType::Unknown;
     u64 size = 0;
     u64 lastModified = 0;
     bool loaded = false;
@@ -34,7 +34,7 @@ struct AssetMetadata {
 template<typename T>
 struct AssetHandle {
     Ref<T> asset;
-    AssetMetadata metadata;
+    LoadableAssetInfo metadata;
     
     bool IsValid() const { return asset != nullptr; }
     T* Get() { return asset.get(); }
@@ -102,7 +102,7 @@ private:
     AssetManager() = default;
     ~AssetManager() = default;
     
-    AssetType GetAssetType(const std::string& path) const;
+    LoadableAssetType GetAssetType(const std::string& path) const;
     void ProcessAsyncQueue();
     
     std::string m_AssetRoot = "Assets/";

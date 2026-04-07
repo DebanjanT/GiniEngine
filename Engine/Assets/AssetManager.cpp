@@ -43,27 +43,27 @@ std::string AssetManager::ResolvePath(const std::string& relativePath) const {
     return m_AssetRoot + relativePath;
 }
 
-AssetType AssetManager::GetAssetType(const std::string& path) const {
+LoadableAssetType AssetManager::GetAssetType(const std::string& path) const {
     std::string ext = path.substr(path.find_last_of('.') + 1);
     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
     
     if (ext == "png" || ext == "jpg" || ext == "jpeg" || ext == "bmp" || ext == "tga") {
-        return AssetType::Texture;
+        return LoadableAssetType::Texture;
     }
     if (ext == "glsl" || ext == "vert" || ext == "frag" || ext == "shader") {
-        return AssetType::Shader;
+        return LoadableAssetType::Shader;
     }
     if (ext == "obj" || ext == "gltf" || ext == "glb" || ext == "fbx" || ext == "dae") {
-        return AssetType::Model;
+        return LoadableAssetType::Model;
     }
     if (ext == "wav" || ext == "mp3" || ext == "ogg" || ext == "flac") {
-        return AssetType::Audio;
+        return LoadableAssetType::Audio;
     }
     if (ext == "ttf" || ext == "otf") {
-        return AssetType::Font;
+        return LoadableAssetType::Font;
     }
     
-    return AssetType::Unknown;
+    return LoadableAssetType::Unknown;
 }
 
 TextureHandle AssetManager::LoadTexture(const std::string& path) {
@@ -79,7 +79,7 @@ TextureHandle AssetManager::LoadTexture(const std::string& path) {
     
     TextureHandle handle;
     handle.metadata.path = path;
-    handle.metadata.type = AssetType::Texture;
+    handle.metadata.type = LoadableAssetType::Texture;
     handle.asset = Texture2D::Create(fullPath);
     
     if (handle.asset) {
@@ -107,7 +107,7 @@ ShaderHandle AssetManager::LoadShader(const std::string& path) {
     
     ShaderHandle handle;
     handle.metadata.path = path;
-    handle.metadata.type = AssetType::Shader;
+    handle.metadata.type = LoadableAssetType::Shader;
     handle.asset = Shader::CreateFromFile(fullPath);
     
     if (handle.asset) {
@@ -133,7 +133,7 @@ ShaderHandle AssetManager::LoadShader(const std::string& name, const std::string
     
     ShaderHandle handle;
     handle.metadata.path = name;
-    handle.metadata.type = AssetType::Shader;
+    handle.metadata.type = LoadableAssetType::Shader;
     handle.asset = Shader::Create(vertexSrc, fragmentSrc);
     
     if (handle.asset) {
@@ -161,7 +161,7 @@ ModelHandle AssetManager::LoadModel(const std::string& path) {
     
     ModelHandle handle;
     handle.metadata.path = path;
-    handle.metadata.type = AssetType::Model;
+    handle.metadata.type = LoadableAssetType::Model;
     handle.asset = Model::Create(fullPath);
     
     if (handle.asset) {

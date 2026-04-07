@@ -43,66 +43,35 @@ void ConsolePanel::OnImGuiRender() {
 
   ImGui::Begin(m_Name.c_str(), &m_Visible);
 
-  // Toolbar
-  if (ImGui::Button("Clear")) {
-    Clear();
-  }
-  ImGui::SameLine();
+  // Toolbar row
+  ImVec4 offColor(0.0f, 0.0f, 0.0f, 0.0f);
+  ImVec4 offHover(0.24f, 0.24f, 0.27f, 1.0f);
+
+  auto FilterToggle = [&](const char* label, bool& flag, ImVec4 onColor) {
+    ImGui::PushStyleColor(ImGuiCol_Button, flag ? onColor : offColor);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, flag ? onColor : offHover);
+    ImGui::PushStyleColor(ImGuiCol_Text, flag ? ImVec4(1,1,1,1) : ImVec4(0.55f,0.55f,0.58f,1));
+    if (ImGui::SmallButton(label)) flag = !flag;
+    ImGui::PopStyleColor(3);
+    ImGui::SameLine(0, 4);
+  };
+
+  if (ImGui::SmallButton("Clear")) Clear();
+  ImGui::SameLine(0, 12);
   ImGui::Checkbox("Auto-scroll", &m_AutoScroll);
-  ImGui::SameLine();
+  ImGui::SameLine(0, 16);
 
-  // Filter buttons (using theme colors with semantic coloring)
-  ImVec4 activeColor = ImGui::GetStyle().Colors[ImGuiCol_ButtonActive];
-  ImVec4 inactiveColor = ImGui::GetStyle().Colors[ImGuiCol_Button];
+  FilterToggle("TRC", m_ShowTrace,  ImVec4(0.35f, 0.35f, 0.40f, 1.0f));
+  FilterToggle("DBG", m_ShowDebug,  ImVec4(0.25f, 0.50f, 0.30f, 1.0f));
+  FilterToggle("INF", m_ShowInfo,   ImVec4(0.18f, 0.45f, 0.62f, 1.0f));
+  FilterToggle("WRN", m_ShowWarn,   ImVec4(0.65f, 0.50f, 0.18f, 1.0f));
+  FilterToggle("ERR", m_ShowError,  ImVec4(0.65f, 0.22f, 0.22f, 1.0f));
 
-  // Trace (gray)
-  ImGui::PushStyleColor(ImGuiCol_Button, m_ShowTrace
-                                             ? ImVec4(0.4f, 0.4f, 0.45f, 1.0f)
-                                             : inactiveColor);
-  if (ImGui::Button("Trace"))
-    m_ShowTrace = !m_ShowTrace;
-  ImGui::PopStyleColor();
-  ImGui::SameLine();
-
-  // Debug (green tint)
-  ImGui::PushStyleColor(ImGuiCol_Button, m_ShowDebug
-                                             ? ImVec4(0.3f, 0.5f, 0.3f, 1.0f)
-                                             : inactiveColor);
-  if (ImGui::Button("Debug"))
-    m_ShowDebug = !m_ShowDebug;
-  ImGui::PopStyleColor();
-  ImGui::SameLine();
-
-  // Info (blue - primary)
-  ImGui::PushStyleColor(ImGuiCol_Button, m_ShowInfo
-                                             ? ImVec4(0.26f, 0.59f, 0.98f, 1.0f)
-                                             : inactiveColor);
-  if (ImGui::Button("Info"))
-    m_ShowInfo = !m_ShowInfo;
-  ImGui::PopStyleColor();
-  ImGui::SameLine();
-
-  // Warn (yellow)
-  ImGui::PushStyleColor(ImGuiCol_Button, m_ShowWarn
-                                             ? ImVec4(0.8f, 0.6f, 0.2f, 1.0f)
-                                             : inactiveColor);
-  if (ImGui::Button("Warn"))
-    m_ShowWarn = !m_ShowWarn;
-  ImGui::PopStyleColor();
-  ImGui::SameLine();
-
-  // Error (red)
-  ImGui::PushStyleColor(ImGuiCol_Button, m_ShowError
-                                             ? ImVec4(0.8f, 0.3f, 0.3f, 1.0f)
-                                             : inactiveColor);
-  if (ImGui::Button("Error"))
-    m_ShowError = !m_ShowError;
-  ImGui::PopStyleColor();
-
-  ImGui::Separator();
-
-  // Filter input
-  ImGui::InputText("Filter", m_FilterBuffer, sizeof(m_FilterBuffer));
+  ImGui::SameLine(0, 12);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
+  ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+  ImGui::InputTextWithHint("##filter", "Filter...", m_FilterBuffer, sizeof(m_FilterBuffer));
+  ImGui::PopStyleVar();
 
   ImGui::Separator();
 
@@ -150,8 +119,12 @@ void ConsolePanel::OnImGuiRender() {
       }
     }
 
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.42f, 0.42f, 0.45f, 1.0f));
+    ImGui::TextUnformatted(msg.timestamp.c_str());
+    ImGui::PopStyleColor();
+    ImGui::SameLine();
     ImGui::PushStyleColor(ImGuiCol_Text, color);
-    ImGui::TextUnformatted(("[" + msg.timestamp + "] " + msg.message).c_str());
+    ImGui::TextUnformatted(msg.message.c_str());
     ImGui::PopStyleColor();
   }
 

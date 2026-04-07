@@ -17,10 +17,15 @@ void PropertiesPanel::OnImGuiRender() {
   if (m_Scene && m_SelectedEntity != NullEntity) {
     DrawComponents(m_SelectedEntity);
 
+    ImGui::Spacing();
     ImGui::Separator();
+    ImGui::Spacing();
 
-    // Add Component button
-    if (ImGui::Button("Add Component", ImVec2(-1, 0))) {
+    // Add Component button (accent colored)
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.56f, 0.72f, 0.35f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.18f, 0.56f, 0.72f, 0.55f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.18f, 0.56f, 0.72f, 0.70f));
+    if (ImGui::Button("+ Add Component", ImVec2(-1, 28))) {
       ImGui::OpenPopup("AddComponent");
     }
 
@@ -42,8 +47,16 @@ void PropertiesPanel::OnImGuiRender() {
       }
       ImGui::EndPopup();
     }
+    ImGui::PopStyleColor(3);
   } else {
-    ImGui::TextDisabled("No entity selected");
+    ImGui::Spacing();
+    ImGui::Spacing();
+    float width = ImGui::GetContentRegionAvail().x;
+    float textWidth = ImGui::CalcTextSize("No entity selected").x;
+    ImGui::SetCursorPosX((width - textWidth) * 0.5f);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.45f, 0.46f, 0.48f, 1.0f));
+    ImGui::Text("No entity selected");
+    ImGui::PopStyleColor();
   }
 
   ImGui::End();

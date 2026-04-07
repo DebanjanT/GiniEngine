@@ -1,5 +1,6 @@
 #include "SceneHierarchyPanel.h"
 #include "ECS/Components.h"
+#include <cstring>
 #include <imgui.h>
 
 namespace Gini {
@@ -12,29 +13,49 @@ void SceneHierarchyPanel::OnImGuiRender() {
     ImGui::Begin(m_Name.c_str(), &m_Visible);
     
     if (m_Scene) {
-        // Draw root entities
+        // Search filter
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8, 4));
+        ImGui::SetNextItemWidth(-1);
+        ImGui::InputTextWithHint("##search", "Search entities...", m_SearchBuffer, sizeof(m_SearchBuffer));
+        ImGui::PopStyleVar(2);
+        ImGui::Spacing();
+
+        // Entity count
         auto roots = m_Scene->GetRootEntities();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.56f, 0.58f, 1.0f));
+        ImGui::Text("%d entities", (int)roots.size());
+        ImGui::PopStyleColor();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // Draw root entities
         for (Entity entity : roots) {
+            if (strlen(m_SearchBuffer) > 0 && !MatchesFilter(entity))
+                continue;
             DrawEntityNode(entity);
         }
         
         // Right-click context menu on empty space
         if (ImGui::BeginPopupContextWindow(nullptr, ImGuiPopupFlags_NoOpenOverItems | ImGuiPopupFlags_MouseButtonRight)) {
-            if (ImGui::MenuItem("Create Empty Entity")) {
+            ImGui::TextDisabled("Create");
+            ImGui::Separator();
+            if (ImGui::MenuItem("Empty Entity")) {
                 m_Scene->CreateEntity("Empty Entity");
             }
-            if (ImGui::MenuItem("Create Camera")) {
-                auto entity = m_Scene->CreateEntity("Camera");
-                // Add camera component when implemented
+            if (ImGui::MenuItem("Camera")) {
+                m_Scene->CreateEntity("Camera");
             }
-            if (ImGui::MenuItem("Create Light")) {
-                auto entity = m_Scene->CreateEntity("Light");
-                // Add light component when implemented
+            if (ImGui::MenuItem("Light")) {
+                m_Scene->CreateEntity("Light");
             }
             ImGui::EndPopup();
         }
     } else {
-        ImGui::TextDisabled("No scene loaded");
+        ImGui::Spacing();
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.56f, 0.58f, 1.0f));
+        ImGui::TextWrapped("No scene loaded. Create or open a scene from File menu.");
+        ImGui::PopStyleColor();
     }
     
     // Deselect when clicking empty space
@@ -43,6 +64,31 @@ void SceneHierarchyPanel::OnImGuiRender() {
     }
     
     ImGui::End();
+}
+
+bool SceneHierarchyPanel::MatchesFilter(Entity entity) {
+    if (!m_Scene) return false;
+    auto& world = m_Scene->GetWorld();
+    if (!world.IsValid(entity)) return false;
+    
+    std::string name = "Entity";
+    if (world.HasComponent<TagComponent>(entity))
+        name = world.GetComponent<TagComponent>(entity).tag;
+    
+    // Case-insensitive substring match
+    std::string lowerName = name;
+    std::string lowerFilter(m_SearchBuffer);
+    for (auto& c : lowerName) c = static_cast<char>(tolower(c));
+    for (auto& c : lowerFilter) c = static_cast<char>(tolower(c));
+    
+    if (lowerName.find(lowerFilter) != std::string::npos)
+        return true;
+    
+    // Check children recursively
+    for (Entity child : m_Scene->GetChildren(entity)) {
+        if (MatchesFilter(child)) return true;
+    }
+    return false;
 }
 
 void SceneHierarchyPanel::DrawEntityNode(Entity entity) {

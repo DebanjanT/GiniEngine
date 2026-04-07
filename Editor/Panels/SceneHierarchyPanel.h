@@ -21,10 +21,12 @@ public:
 private:
     void DrawEntityNode(Entity entity);
     void DrawContextMenu();
+    bool MatchesFilter(Entity entity);
     
     Ref<Scene> m_Scene;
     Entity m_SelectedEntity = NullEntity;
     SelectionCallback m_SelectionCallback;
+    char m_SearchBuffer[128] = {};
 };
 
 } // namespace Gini

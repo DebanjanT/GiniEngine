@@ -53,55 +53,78 @@ void AssetBrowserPanel::OnImGuiRender() {
 }
 
 void AssetBrowserPanel::DrawTopBar() {
-  // Navigation buttons
-  if (ImGui::Button("<")) {
-    NavigateBack();
-  }
-  ImGui::SameLine();
-  if (ImGui::Button(">")) {
-    NavigateForward();
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("^")) {
-    if (m_CurrentDirectory != m_RootPath &&
-        m_CurrentDirectory.has_parent_path()) {
-      NavigateTo(m_CurrentDirectory.parent_path());
-    }
-  }
-  ImGui::SameLine();
-  if (ImGui::Button("Refresh")) {
-    Refresh();
-  }
+  ImVec4 navBtnCol(0.0f, 0.0f, 0.0f, 0.0f);
+  ImVec4 navBtnHov(0.24f, 0.24f, 0.27f, 1.0f);
+  ImGui::PushStyleColor(ImGuiCol_Button, navBtnCol);
+  ImGui::PushStyleColor(ImGuiCol_ButtonHovered, navBtnHov);
 
-  ImGui::SameLine();
+  bool canBack = !m_BackHistory.empty();
+  bool canFwd = !m_ForwardHistory.empty();
+  bool canUp = m_CurrentDirectory != m_RootPath && m_CurrentDirectory.has_parent_path();
+
+  if (!canBack) ImGui::BeginDisabled();
+  if (ImGui::SmallButton("<##back")) NavigateBack();
+  if (!canBack) ImGui::EndDisabled();
+  ImGui::SameLine(0, 2);
+  if (!canFwd) ImGui::BeginDisabled();
+  if (ImGui::SmallButton(">##fwd")) NavigateForward();
+  if (!canFwd) ImGui::EndDisabled();
+  ImGui::SameLine(0, 2);
+  if (!canUp) ImGui::BeginDisabled();
+  if (ImGui::SmallButton("^##up")) NavigateTo(m_CurrentDirectory.parent_path());
+  if (!canUp) ImGui::EndDisabled();
+  ImGui::SameLine(0, 8);
+  if (ImGui::SmallButton("Refresh")) Refresh();
+  ImGui::PopStyleColor(2);
+
+  ImGui::SameLine(0, 8);
   ImGui::Checkbox("Tree", &m_ShowDirectoryTree);
 
-  // Current path display
-  ImGui::SameLine();
-  std::filesystem::path relativePath;
-  std::error_code relError;
-  relativePath = std::filesystem::relative(m_CurrentDirectory, m_RootPath, relError);
-  if (relError) {
-    relativePath.clear();
-  }
-  std::string pathStr = "Assets";
-  if (!relativePath.empty() && relativePath != ".") {
-    pathStr += "/" + relativePath.string();
-  }
-  ImGui::Text("%s", pathStr.c_str());
+  // Breadcrumb path
+  ImGui::SameLine(0, 12);
+  {
+    std::filesystem::path rel;
+    std::error_code ec;
+    rel = std::filesystem::relative(m_CurrentDirectory, m_RootPath, ec);
+    if (ec) rel.clear();
 
-  // Search filter
-  ImGui::SameLine(ImGui::GetWindowWidth() - 250);
-  ImGui::SetNextItemWidth(150);
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0,0,0,0));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f,0.24f,0.27f,1));
+
+    // Root "Assets"
+    if (ImGui::SmallButton("Assets")) NavigateTo(m_RootPath);
+
+    if (!rel.empty() && rel != ".") {
+      std::filesystem::path accumulated = m_RootPath;
+      for (auto it = rel.begin(); it != rel.end(); ++it) {
+        accumulated /= *it;
+        ImGui::SameLine(0, 2);
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.45f, 0.45f, 0.48f, 1.0f));
+        ImGui::Text("/");
+        ImGui::PopStyleColor();
+        ImGui::SameLine(0, 2);
+        std::string part = it->string();
+        std::string btnId = part + "##bc" + accumulated.string();
+        if (ImGui::SmallButton(btnId.c_str())) NavigateTo(accumulated);
+      }
+    }
+    ImGui::PopStyleColor(2);
+  }
+
+  // Right side: search + size slider
+  float rightWidth = 230.0f;
+  ImGui::SameLine(ImGui::GetWindowWidth() - rightWidth);
+  ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 8.0f);
+  ImGui::SetNextItemWidth(140);
   char searchBuffer[256];
   std::snprintf(searchBuffer, sizeof(searchBuffer), "%s", m_SearchFilter.c_str());
-  if (ImGui::InputText("##Search", searchBuffer, sizeof(searchBuffer))) {
+  if (ImGui::InputTextWithHint("##Search", "Search...", searchBuffer, sizeof(searchBuffer))) {
     m_SearchFilter = searchBuffer;
   }
+  ImGui::PopStyleVar();
 
-  // Thumbnail size slider
-  ImGui::SameLine();
-  ImGui::SetNextItemWidth(80);
+  ImGui::SameLine(0, 8);
+  ImGui::SetNextItemWidth(70);
   ImGui::SliderFloat("##Size", &m_ThumbnailSize, 48.0f, 256.0f, "%.0f");
 }
 

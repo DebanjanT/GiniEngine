@@ -453,8 +453,7 @@ void EditorApp::SetupDockspace() {
   static bool firstTime = true;
   static ImGuiDockNodeFlags dockspaceFlags = ImGuiDockNodeFlags_None;
 
-  ImGuiWindowFlags windowFlags =
-      ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoDocking;
+  ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDocking;
 
   ImGuiViewport *viewport = ImGui::GetMainViewport();
   ImGui::SetNextWindowPos(viewport->WorkPos);
@@ -468,16 +467,14 @@ void EditorApp::SetupDockspace() {
       ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
 
   ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-  ImGui::Begin("DockSpace Demo", &dockspaceOpen, windowFlags);
+  ImGui::Begin("GiniDockHost", &dockspaceOpen, windowFlags);
   ImGui::PopStyleVar(3);
 
-  // DockSpace
   ImGuiIO &io = ImGui::GetIO();
   if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable) {
-    ImGuiID dockspaceId = ImGui::GetID("MyDockSpace");
+    ImGuiID dockspaceId = ImGui::GetID("GiniDockSpace");
     ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), dockspaceFlags);
 
-    // Setup default layout on first run
     if (firstTime) {
       firstTime = false;
       ImGui::DockBuilderRemoveNode(dockspaceId);
@@ -485,24 +482,37 @@ void EditorApp::SetupDockspace() {
                                 dockspaceFlags | ImGuiDockNodeFlags_DockSpace);
       ImGui::DockBuilderSetNodeSize(dockspaceId, viewport->WorkSize);
 
-      // Split the dockspace
-      ImGuiID dockLeft, dockRight, dockBottom;
-      ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Left, 0.2f, &dockLeft,
-                                  &dockRight);
-      ImGuiID dockRightBottom;
-      ImGui::DockBuilderSplitNode(dockRight, ImGuiDir_Down, 0.25f,
-                                  &dockRightBottom, &dockRight);
-      ImGuiID dockRightRight;
-      ImGui::DockBuilderSplitNode(dockRight, ImGuiDir_Right, 0.25f,
-                                  &dockRightRight, &dockRight);
+      // --- Professional layout ---
+      // Step 1: carve bottom strip (28%) for console/asset browser
+      ImGuiID dockMain, dockBottom;
+      ImGui::DockBuilderSplitNode(dockspaceId, ImGuiDir_Down, 0.28f,
+                                  &dockBottom, &dockMain);
 
-      // Dock windows to nodes
+      // Step 2: carve left panel (18%) for hierarchy
+      ImGuiID dockLeft, dockCenter;
+      ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Left, 0.18f,
+                                  &dockLeft, &dockCenter);
+
+      // Step 3: carve right panel (22%) for properties
+      ImGuiID dockRight;
+      ImGui::DockBuilderSplitNode(dockCenter, ImGuiDir_Right, 0.22f,
+                                  &dockRight, &dockCenter);
+
+      // Step 4: split bottom into left (console/stats) and right (asset browser)
+      ImGuiID dockBottomLeft, dockBottomRight;
+      ImGui::DockBuilderSplitNode(dockBottom, ImGuiDir_Left, 0.35f,
+                                  &dockBottomLeft, &dockBottomRight);
+
+      // Dock windows
       ImGui::DockBuilderDockWindow("Scene Hierarchy", dockLeft);
-      ImGui::DockBuilderDockWindow("Properties", dockRightRight);
-      ImGui::DockBuilderDockWindow("Viewport", dockRight);
-      ImGui::DockBuilderDockWindow("Console", dockRightBottom);
-      ImGui::DockBuilderDockWindow("Stats", dockRightBottom);
-      ImGui::DockBuilderDockWindow("##toolbar", dockRight);
+      ImGui::DockBuilderDockWindow("Viewport", dockCenter);
+      ImGui::DockBuilderDockWindow("Properties", dockRight);
+      ImGui::DockBuilderDockWindow("Scene Properties", dockRight);
+      ImGui::DockBuilderDockWindow("Console", dockBottomLeft);
+      ImGui::DockBuilderDockWindow("Stats", dockBottomLeft);
+      ImGui::DockBuilderDockWindow("Asset Browser", dockBottomRight);
+      ImGui::DockBuilderDockWindow("Weather System", dockRight);
+      ImGui::DockBuilderDockWindow("Thread Analysis", dockBottomLeft);
 
       ImGui::DockBuilderFinish(dockspaceId);
     }
@@ -512,11 +522,18 @@ void EditorApp::SetupDockspace() {
 }
 
 void EditorApp::DrawMenuBar() {
+  ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6, 6));
   if (ImGui::BeginMainMenuBar()) {
+    // Engine name badge
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.18f, 0.56f, 0.72f, 1.0f));
+    ImGui::Text("GINI");
+    ImGui::PopStyleColor();
+    ImGui::SameLine(0, 16);
+
     if (ImGui::BeginMenu("File")) {
       if (ImGui::MenuItem("New Scene", "Ctrl+N"))
         NewScene();
-      if (ImGui::MenuItem("Open Scene", "Ctrl+O"))
+      if (ImGui::MenuItem("Open Scene...", "Ctrl+O"))
         OpenScene();
       ImGui::Separator();
       if (ImGui::MenuItem("Save Scene", "Ctrl+S"))
@@ -524,116 +541,193 @@ void EditorApp::DrawMenuBar() {
       if (ImGui::MenuItem("Save Scene As...", "Ctrl+Shift+S"))
         SaveSceneAs();
       ImGui::Separator();
-      if (ImGui::MenuItem("Exit")) {
-        // Close application
+      if (ImGui::MenuItem("Exit"))
+        GetWindow().Close();
+      ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginMenu("Edit")) {
+      if (ImGui::MenuItem("Undo", "Ctrl+Z", false, false)) {}
+      if (ImGui::MenuItem("Redo", "Ctrl+Y", false, false)) {}
+      ImGui::Separator();
+      if (ImGui::MenuItem("Preferences", nullptr, false, false)) {}
+      ImGui::EndMenu();
+    }
+
+    if (ImGui::BeginMenu("Entity")) {
+      if (ImGui::MenuItem("Create Empty Entity")) {
+        if (m_ActiveScene)
+          m_ActiveScene->CreateEntity("Empty Entity");
+      }
+      ImGui::Separator();
+      if (ImGui::BeginMenu("3D Object")) {
+        if (ImGui::MenuItem("Cube")) {
+          if (m_ActiveScene) m_ActiveScene->CreateEntity("Cube");
+        }
+        if (ImGui::MenuItem("Sphere")) {
+          if (m_ActiveScene) m_ActiveScene->CreateEntity("Sphere");
+        }
+        if (ImGui::MenuItem("Plane")) {
+          if (m_ActiveScene) m_ActiveScene->CreateEntity("Plane");
+        }
+        ImGui::EndMenu();
+      }
+      if (ImGui::BeginMenu("Light")) {
+        if (ImGui::MenuItem("Directional Light")) {
+          if (m_ActiveScene) m_ActiveScene->CreateEntity("Directional Light");
+        }
+        if (ImGui::MenuItem("Point Light")) {
+          if (m_ActiveScene) m_ActiveScene->CreateEntity("Point Light");
+        }
+        if (ImGui::MenuItem("Spot Light")) {
+          if (m_ActiveScene) m_ActiveScene->CreateEntity("Spot Light");
+        }
+        ImGui::EndMenu();
+      }
+      if (ImGui::MenuItem("Camera")) {
+        if (m_ActiveScene) m_ActiveScene->CreateEntity("Camera");
       }
       ImGui::EndMenu();
     }
 
     if (ImGui::BeginMenu("Tools")) {
-      if (ImGui::MenuItem("Terrain Editor")) {
+      if (ImGui::MenuItem("Terrain Editor"))
         m_TerrainEditorWindow.Open();
-      }
-      if (ImGui::MenuItem("Material Editor")) {
+      if (ImGui::MenuItem("Material Editor"))
         m_MaterialEditorPanel.NewMaterial();
-      }
-      ImGui::EndMenu();
-    }
-
-    if (ImGui::BeginMenu("Edit")) {
-      if (ImGui::MenuItem("Undo", "Ctrl+Z")) {
-      }
-      if (ImGui::MenuItem("Redo", "Ctrl+Y")) {
-      }
-      ImGui::Separator();
-      if (ImGui::MenuItem("Preferences")) {
-      }
       ImGui::EndMenu();
     }
 
     if (ImGui::BeginMenu("View")) {
+      ImGui::TextDisabled("Panels");
+      ImGui::Separator();
       ImGui::MenuItem("Scene Hierarchy", nullptr, &m_HierarchyPanel.m_Visible);
       ImGui::MenuItem("Properties", nullptr, &m_PropertiesPanel.m_Visible);
       ImGui::MenuItem("Scene Properties", nullptr,
                       &m_ScenePropertiesPanel.m_Visible);
-      ImGui::MenuItem("Stats", nullptr, &m_StatsPanel.m_Visible);
       ImGui::MenuItem("Console", nullptr, &m_ConsolePanel.m_Visible);
       ImGui::MenuItem("Asset Browser", nullptr, &m_AssetBrowserPanel.m_Visible);
+      ImGui::MenuItem("Stats", nullptr, &m_StatsPanel.m_Visible);
+      ImGui::Separator();
+      ImGui::TextDisabled("Systems");
+      ImGui::Separator();
       ImGui::MenuItem("Weather System", nullptr,
                       &m_WeatherPanel.GetVisibleRef());
       ImGui::MenuItem("Thread Analysis", nullptr,
                       &m_ThreadAnalysisPanel.m_Visible);
       ImGui::Separator();
+      ImGui::TextDisabled("Debug");
+      ImGui::Separator();
       ImGui::MenuItem("ImGui Demo", nullptr, &m_ShowDemoWindow);
       ImGui::EndMenu();
     }
 
-    if (ImGui::BeginMenu("Entity")) {
-      if (ImGui::MenuItem("Create Empty")) {
-        if (m_ActiveScene)
-          m_ActiveScene->CreateEntity("Empty Entity");
-      }
-      if (ImGui::MenuItem("Create Camera")) {
-        if (m_ActiveScene)
-          m_ActiveScene->CreateEntity("Camera");
-      }
-      if (ImGui::MenuItem("Create Light")) {
-        if (m_ActiveScene)
-          m_ActiveScene->CreateEntity("Light");
-      }
-      ImGui::EndMenu();
-    }
-
     if (ImGui::BeginMenu("Help")) {
-      if (ImGui::MenuItem("About Gini Engine")) {
-      }
+      if (ImGui::MenuItem("About Gini Engine")) {}
+      ImGui::Separator();
       bool canIncrease = (ImGuiLayer::m_fontSize + 2.0f) < 23.0f;
       bool canDecrease = (ImGuiLayer::m_fontSize - 2.0f) > 10.0f;
-
-      if (ImGui::MenuItem("Increase Font Size", nullptr, false, canIncrease)) {
+      if (ImGui::MenuItem("Increase Font Size", "Ctrl+=", false, canIncrease))
         ImGuiLayer::SetFontSize(ImGuiLayer::m_fontSize + 2.0f);
-      }
-
-      if (ImGui::MenuItem("Decrease Font Size", nullptr, false, canDecrease)) {
+      if (ImGui::MenuItem("Decrease Font Size", "Ctrl+-", false, canDecrease))
         ImGuiLayer::SetFontSize(ImGuiLayer::m_fontSize - 2.0f);
-      }
-
       ImGui::EndMenu();
     }
+
+    // Right-aligned FPS display
+    float fpsWidth = ImGui::CalcTextSize("FPS: 999.9").x + 16.0f;
+    ImGui::SameLine(ImGui::GetWindowWidth() - fpsWidth);
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.55f, 0.56f, 0.58f, 1.0f));
+    ImGui::Text("FPS: %.0f", ImGui::GetIO().Framerate);
+    ImGui::PopStyleColor();
 
     ImGui::EndMainMenuBar();
   }
+  ImGui::PopStyleVar();
 }
 
 void EditorApp::DrawToolbar() {
-  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0, 2));
-  ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(0, 0));
+  ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 4));
+  ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.11f, 0.11f, 0.12f, 1.0f));
+
+  ImGuiViewport *vp = ImGui::GetMainViewport();
+  float toolbarHeight = 34.0f;
+  ImGui::SetNextWindowPos(ImVec2(vp->WorkPos.x, vp->WorkPos.y));
+  ImGui::SetNextWindowSize(ImVec2(vp->WorkSize.x, toolbarHeight));
 
   ImGui::Begin("##toolbar", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoScrollbar |
-                   ImGuiWindowFlags_NoScrollWithMouse);
+                   ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoDocking |
+                   ImGuiWindowFlags_NoMove);
 
-  float size = ImGui::GetWindowHeight() - 4.0f;
+  float btnH = 24.0f;
+  float btnW = 28.0f;
 
-  ImGui::SetCursorPosX((ImGui::GetWindowContentRegionMax().x * 0.5f) -
-                       (size * 0.5f));
+  auto ToolButton = [&](const char* label, bool selected) -> bool {
+    if (selected) {
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.56f, 0.72f, 0.40f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.18f, 0.56f, 0.72f, 0.55f));
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.88f, 1.0f, 1.0f));
+    } else {
+      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.24f, 0.27f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.70f, 0.72f, 1.0f));
+    }
+    bool clicked = ImGui::Button(label, ImVec2(btnW, btnH));
+    ImGui::PopStyleColor(3);
+    return clicked;
+  };
 
+  // -- Gizmo mode buttons (left) --
+  ImGui::SetCursorPosY((toolbarHeight - btnH) * 0.5f);
+  if (ToolButton("W", m_GizmoOperation == GizmoOperation::Translate))
+    m_GizmoOperation = GizmoOperation::Translate;
+  ImGui::SameLine(0, 2);
+  if (ToolButton("E", m_GizmoOperation == GizmoOperation::Rotate))
+    m_GizmoOperation = GizmoOperation::Rotate;
+  ImGui::SameLine(0, 2);
+  if (ToolButton("R", m_GizmoOperation == GizmoOperation::Scale))
+    m_GizmoOperation = GizmoOperation::Scale;
+
+  ImGui::SameLine(0, 12);
+  ImGui::PushStyleColor(ImGuiCol_Separator, ImVec4(0.30f, 0.30f, 0.32f, 0.50f));
+  ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+  ImGui::PopStyleColor();
+  ImGui::SameLine(0, 12);
+
+  // Snap toggle
+  ImGui::SetCursorPosY((toolbarHeight - btnH) * 0.5f);
+  if (ToolButton("Snap", m_GizmoUsingSnap))
+    m_GizmoUsingSnap = !m_GizmoUsingSnap;
+
+  // -- Play/Stop (centered) --
   bool isPlaying = m_SceneState == SceneState::Play;
+  float centerX = ImGui::GetWindowWidth() * 0.5f;
+  float playBtnW = 70.0f;
+  ImGui::SameLine(centerX - playBtnW * 0.5f);
+  ImGui::SetCursorPosY((toolbarHeight - btnH) * 0.5f);
 
-  if (ImGui::Button(isPlaying ? "Stop" : "Play", ImVec2(size * 2, size))) {
+  if (isPlaying) {
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.65f, 0.22f, 0.22f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.75f, 0.30f, 0.30f, 1.0f));
+  } else {
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.56f, 0.72f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.65f, 0.82f, 1.0f));
+  }
+  if (ImGui::Button(isPlaying ? "  Stop  " : "  Play  ", ImVec2(playBtnW, btnH))) {
     if (m_SceneState == SceneState::Edit) {
       m_SceneState = SceneState::Play;
-      if (m_ActiveScene)
-        m_ActiveScene->OnStart();
+      if (m_ActiveScene) m_ActiveScene->OnStart();
     } else {
       m_SceneState = SceneState::Edit;
-      if (m_ActiveScene)
-        m_ActiveScene->OnStop();
+      if (m_ActiveScene) m_ActiveScene->OnStop();
     }
   }
+  ImGui::PopStyleColor(2);
 
   ImGui::End();
-  ImGui::PopStyleVar(2);
+  ImGui::PopStyleColor();
+  ImGui::PopStyleVar();
 }
 
 void EditorApp::DrawViewport() {
@@ -668,6 +762,29 @@ void EditorApp::DrawViewport() {
   m_ViewportBounds[0] = {imagePos.x, imagePos.y};
   m_ViewportBounds[1] = {imagePos.x + m_ViewportSize.x,
                          imagePos.y + m_ViewportSize.y};
+
+  // Viewport overlay (top-left: gizmo mode / camera info)
+  {
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImVec2 overlayPos(imagePos.x + 8, imagePos.y + 8);
+    ImU32 bgCol = IM_COL32(0, 0, 0, 140);
+    ImU32 textCol = IM_COL32(200, 200, 205, 220);
+
+    const char* gizmoName = "Move";
+    if (m_GizmoOperation == GizmoOperation::Rotate) gizmoName = "Rotate";
+    else if (m_GizmoOperation == GizmoOperation::Scale) gizmoName = "Scale";
+
+    Vec3 camPos = m_EditorCamera->GetPosition();
+    char overlay[128];
+    snprintf(overlay, sizeof(overlay), "%s | Cam: %.1f, %.1f, %.1f",
+             gizmoName, camPos.x, camPos.y, camPos.z);
+
+    ImVec2 textSize = ImGui::CalcTextSize(overlay);
+    dl->AddRectFilled(overlayPos,
+                      ImVec2(overlayPos.x + textSize.x + 12, overlayPos.y + textSize.y + 8),
+                      bgCol, 4.0f);
+    dl->AddText(ImVec2(overlayPos.x + 6, overlayPos.y + 4), textCol, overlay);
+  }
 
   // Handle terrain painting now that viewport bounds are set correctly
   HandleTerrainPainting(m_DeltaTime);

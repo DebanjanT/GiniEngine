@@ -1,6 +1,7 @@
 #include "Texture.h"
 #include "Core/Logger.h"
 
+#include <algorithm>
 #include <glad/gl.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -17,7 +18,7 @@ Texture2D::Texture2D(u32 width, u32 height) : m_Width(width), m_Height(height) {
   glBindTexture(GL_TEXTURE_2D, m_RendererID);
 
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
@@ -54,9 +55,14 @@ Texture2D::Texture2D(const std::string &path) : m_Path(path) {
 
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
                   GL_LINEAR_MIPMAP_LINEAR);
-  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+  GLfloat maxAniso = 1.0f;
+  glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &maxAniso);
+  if (maxAniso > 1.0f)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY, std::min(maxAniso, 16.0f));
 
   glTexImage2D(GL_TEXTURE_2D, 0, m_InternalFormat, width, height, 0,
                m_DataFormat, GL_UNSIGNED_BYTE, data);

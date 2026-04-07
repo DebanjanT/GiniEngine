@@ -186,73 +186,68 @@ void Material::Save(const std::filesystem::path& path) {
 
 void Material::Bind(Ref<Shader> shader, u32 textureSlotStart) {
   u32 slot = textureSlotStart;
-  
-  // Bind albedo
+
+  shader->SetVec3("u_Material_albedo", m_AlbedoColor);
+  shader->SetFloat("u_Material_metallic", m_Metallic);
+  shader->SetFloat("u_Material_roughness", m_Roughness);
+  shader->SetFloat("u_Material_ao", m_AO);
+  shader->SetVec3("u_Material_emissive", Vec3(0.0f));
+
   if (m_HasAlbedoTexture && m_AlbedoTexture) {
     m_AlbedoTexture->Bind(slot);
-    shader->SetInt("u_AlbedoTexture", slot);
-    shader->SetInt("u_HasAlbedoTexture", 1);
+    shader->SetInt("u_AlbedoMap", slot);
+    shader->SetInt("u_HasAlbedoMap", 1);
     slot++;
   } else {
-    shader->SetInt("u_HasAlbedoTexture", 0);
-    shader->SetVec3("u_AlbedoColor", m_AlbedoColor);
+    shader->SetInt("u_HasAlbedoMap", 0);
   }
-  
-  // Bind normal
+
   if (m_HasNormalTexture && m_NormalTexture) {
     m_NormalTexture->Bind(slot);
-    shader->SetInt("u_NormalTexture", slot);
-    shader->SetInt("u_HasNormalTexture", 1);
+    shader->SetInt("u_NormalMap", slot);
+    shader->SetInt("u_HasNormalMap", 1);
     slot++;
   } else {
-    shader->SetInt("u_HasNormalTexture", 0);
+    shader->SetInt("u_HasNormalMap", 0);
   }
-  
-  // Bind roughness
+
   if (m_HasRoughnessTexture && m_RoughnessTexture) {
     m_RoughnessTexture->Bind(slot);
-    shader->SetInt("u_RoughnessTexture", slot);
-    shader->SetInt("u_HasRoughnessTexture", 1);
+    shader->SetInt("u_RoughnessMap", slot);
+    shader->SetInt("u_HasRoughnessMap", 1);
     slot++;
   } else {
-    shader->SetInt("u_HasRoughnessTexture", 0);
-    shader->SetFloat("u_Roughness", m_Roughness);
+    shader->SetInt("u_HasRoughnessMap", 0);
   }
-  
-  // Bind metallic
+
   if (m_HasMetallicTexture && m_MetallicTexture) {
     m_MetallicTexture->Bind(slot);
-    shader->SetInt("u_MetallicTexture", slot);
-    shader->SetInt("u_HasMetallicTexture", 1);
+    shader->SetInt("u_MetallicMap", slot);
+    shader->SetInt("u_HasMetallicMap", 1);
     slot++;
   } else {
-    shader->SetInt("u_HasMetallicTexture", 0);
-    shader->SetFloat("u_Metallic", m_Metallic);
+    shader->SetInt("u_HasMetallicMap", 0);
   }
-  
-  // Bind AO
+
   if (m_HasAOTexture && m_AOTexture) {
     m_AOTexture->Bind(slot);
-    shader->SetInt("u_AOTexture", slot);
-    shader->SetInt("u_HasAOTexture", 1);
+    shader->SetInt("u_AOMap", slot);
+    shader->SetInt("u_HasAOMap", 1);
     slot++;
   } else {
-    shader->SetInt("u_HasAOTexture", 0);
-    shader->SetFloat("u_AO", m_AO);
+    shader->SetInt("u_HasAOMap", 0);
   }
-  
-  // Bind height
+
   if (m_HasHeightTexture && m_HeightTexture) {
     m_HeightTexture->Bind(slot);
-    shader->SetInt("u_HeightTexture", slot);
-    shader->SetInt("u_HasHeightTexture", 1);
+    shader->SetInt("u_HeightMap", slot);
+    shader->SetInt("u_HasHeightMap", 1);
     shader->SetFloat("u_HeightScale", m_HeightScale);
     slot++;
   } else {
-    shader->SetInt("u_HasHeightTexture", 0);
+    shader->SetInt("u_HasHeightMap", 0);
   }
-  
-  // Set tiling
+
   shader->SetVec2("u_Tiling", m_Tiling);
 }
 

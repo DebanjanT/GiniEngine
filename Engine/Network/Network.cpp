@@ -1,6 +1,8 @@
 #include "Network.h"
 #include "Core/Logger.h"
+#include <chrono>
 #include <cstring>
+#include <thread>
 
 namespace Gini {
 
@@ -48,6 +50,7 @@ bool NetworkManager::InitServer(u16 port, u32 maxClients) {
     m_MaxClients = maxClients;
     m_State = ConnectionState::Connected;
     m_ClientId = 0; // Server is always client 0
+    StartNetworkThread();
     
     // TODO: Initialize platform-specific socket
     // For now, this is a stub implementation
@@ -64,6 +67,7 @@ bool NetworkManager::InitClient() {
     
     m_Mode = NetworkMode::Client;
     m_State = ConnectionState::Disconnected;
+    StartNetworkThread();
     
     GINI_INFO("Network client initialized");
     return true;
@@ -73,6 +77,7 @@ void NetworkManager::Shutdown() {
     if (m_Mode == NetworkMode::None) return;
     
     Disconnect();
+    StopNetworkThread();
     
     m_Mode = NetworkMode::None;
     m_State = ConnectionState::Disconnected;
@@ -134,18 +139,27 @@ void NetworkManager::Disconnect() {
 
 void NetworkManager::Update() {
     if (m_Mode == NetworkMode::None) return;
-    
-    PollEvents();
-    ProcessPackets();
+
+    // In threaded mode, polling/processing runs continuously in the network
+    // thread. Manual Update remains as a fallback when needed.
+    if (!m_ThreadedUpdateEnabled.load()) {
+        PollEvents();
+        ProcessPackets();
+    }
 }
 
 void NetworkManager::ProcessPackets() {
-    std::lock_guard<std::mutex> lock(m_PacketMutex);
-    
-    while (!m_IncomingPackets.empty()) {
-        Packet packet = m_IncomingPackets.front();
-        m_IncomingPackets.pop();
-        
+    while (true) {
+        Packet packet;
+        {
+            std::lock_guard<std::mutex> lock(m_PacketMutex);
+            if (m_IncomingPackets.empty()) {
+                break;
+            }
+            packet = m_IncomingPackets.front();
+            m_IncomingPackets.pop();
+        }
+
         HandlePacket(packet, packet.senderId);
     }
 }
@@ -194,6 +208,34 @@ void NetworkManager::RegisterCustomHandler(u8 customType, PacketHandler handler)
 void NetworkManager::PollEvents() {
     // TODO: Poll socket for incoming data
     // This would be platform-specific (select/poll/epoll/IOCP/kqueue)
+}
+
+void NetworkManager::StartNetworkThread() {
+    if (m_NetworkThread.IsRunning()) {
+        return;
+    }
+
+    m_ThreadedUpdateEnabled.store(true);
+    m_NetworkThread.Start("NetworkThread");
+    m_NetworkThread.Submit([this]() { NetworkThreadMain(); });
+}
+
+void NetworkManager::StopNetworkThread() {
+    if (!m_NetworkThread.IsRunning()) {
+        return;
+    }
+
+    m_ThreadedUpdateEnabled.store(false);
+    m_NetworkThread.Stop();
+}
+
+void NetworkManager::NetworkThreadMain() {
+    using namespace std::chrono_literals;
+    while (m_ThreadedUpdateEnabled.load() && m_Mode != NetworkMode::None) {
+        PollEvents();
+        ProcessPackets();
+        std::this_thread::sleep_for(1ms);
+    }
 }
 
 void NetworkManager::HandlePacket(const Packet& packet, u32 senderId) {

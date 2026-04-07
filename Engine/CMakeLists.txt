@@ -7,6 +7,8 @@ set(ENGINE_SOURCES
     Core/Logger.cpp
     Core/Timer.cpp
     Core/Input.cpp
+    Core/Threading.cpp
+    Core/ThreadProfiler.cpp
 
     # Window
     Window/Window.cpp
@@ -88,6 +90,8 @@ set(ENGINE_HEADERS
     Core/Logger.h
     Core/Timer.h
     Core/Input.h
+    Core/Threading.h
+    Core/ThreadProfiler.h
     Core/Types.h
     Core/Event.h
 

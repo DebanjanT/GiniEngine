@@ -207,6 +207,10 @@ void Window::Update() {
 
 void Window::SwapBuffers() { glfwSwapBuffers(m_Window); }
 
+void Window::MakeContextCurrent() { glfwMakeContextCurrent(m_Window); }
+
+void Window::DetachContext() { glfwMakeContextCurrent(nullptr); }
+
 bool Window::ShouldClose() const { return glfwWindowShouldClose(m_Window); }
 
 void Window::Close() { glfwSetWindowShouldClose(m_Window, GLFW_TRUE); }

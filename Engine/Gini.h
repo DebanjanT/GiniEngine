@@ -6,6 +6,8 @@
 #include "Core/Event.h"
 #include "Core/Timer.h"
 #include "Core/Input.h"
+#include "Core/Threading.h"
+#include "Core/ThreadProfiler.h"
 #include "Core/Application.h"
 
 // Window

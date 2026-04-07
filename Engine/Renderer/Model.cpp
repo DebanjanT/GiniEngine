@@ -214,6 +214,7 @@ void Model::LoadMaterialTextures(Material3D& material, const aiMaterial* aiMat) 
     material.roughnessMap = loadTexture(aiMat, aiTextureType_DIFFUSE_ROUGHNESS);
     material.aoMap = loadTexture(aiMat, aiTextureType_AMBIENT_OCCLUSION);
     material.emissiveMap = loadTexture(aiMat, aiTextureType_EMISSIVE);
+    material.heightMap = loadTexture(aiMat, aiTextureType_DISPLACEMENT);
 }
 
 void Model::Draw(Shader* shader) const {
@@ -270,6 +271,23 @@ void Model::DrawMesh(u32 index, Shader* shader) const {
                 shader->SetInt("u_HasRoughnessMap", 1);
             } else {
                 shader->SetInt("u_HasRoughnessMap", 0);
+            }
+
+            if (mat.aoMap) {
+                mat.aoMap->Bind(textureUnit);
+                shader->SetInt("u_AOMap", textureUnit++);
+                shader->SetInt("u_HasAOMap", 1);
+            } else {
+                shader->SetInt("u_HasAOMap", 0);
+            }
+
+            if (mat.heightMap) {
+                mat.heightMap->Bind(textureUnit);
+                shader->SetInt("u_HeightMap", textureUnit++);
+                shader->SetInt("u_HasHeightMap", 1);
+                shader->SetFloat("u_HeightScale", mat.heightScale);
+            } else {
+                shader->SetInt("u_HasHeightMap", 0);
             }
         }
     }

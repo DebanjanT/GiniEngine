@@ -5,32 +5,74 @@
 
 namespace Gini {
 
-void AssetRegistry::ScanDirectory(const std::filesystem::path &directory) {
-  if (!std::filesystem::exists(directory)) {
-    GINI_ERROR("Asset directory not found: ", directory.string());
-    return;
-  }
+bool AssetRegistry::ShouldSkipDirectoryName(const std::string &name) const {
+  static const std::vector<std::string> skipDirs = {
+      ".git", ".svn", ".hg", "build", "Build", "Binaries", "Intermediate",
+      "DerivedDataCache", "node_modules", ".cache", "__pycache__"};
+  return std::find(skipDirs.begin(), skipDirs.end(), name) != skipDirs.end();
+}
 
-  m_RootPath = directory;
-  Clear();
-  ScanDirectoryRecursive(directory, "");
-  GINI_INFO("Scanned ", m_Assets.size(), " assets in ", directory.string());
+void AssetRegistry::ScanDirectory(const std::filesystem::path &directory) {
+  std::lock_guard<std::mutex> lock(m_Mutex);
+
+  try {
+    std::error_code ec;
+    if (!std::filesystem::exists(directory, ec) || ec) {
+      GINI_ERROR("Asset directory not found: ", directory.string());
+      return;
+    }
+
+    m_RootPath = directory;
+    m_Assets.clear();
+    m_PathToUUID.clear();
+
+    ScanDirectoryRecursive(directory, "");
+    GINI_INFO("Scanned ", m_Assets.size(), " assets in ", directory.string());
+  } catch (const std::exception &e) {
+    GINI_ERROR("AssetRegistry scan failed for ", directory.string(), " reason: ",
+               e.what());
+    m_Assets.clear();
+    m_PathToUUID.clear();
+  }
 }
 
 void AssetRegistry::ScanDirectoryRecursive(
     const std::filesystem::path &directory,
     const std::filesystem::path &relativePath) {
-  for (const auto &entry : std::filesystem::directory_iterator(directory)) {
-    std::string filename = entry.path().filename().string();
+  std::error_code dirError;
+  auto it = std::filesystem::directory_iterator(
+      directory, std::filesystem::directory_options::skip_permission_denied,
+      dirError);
+  if (dirError) {
+    GINI_WARN("Failed to open directory: ", directory.string(),
+              " error: ", dirError.message());
+    return;
+  }
 
-    // Skip hidden files and directories
-    if (filename[0] == '.')
+  for (const auto &entry : it) {
+    if (m_Assets.size() >= MAX_ASSET_ENTRIES) {
+      GINI_WARN("Asset registry limit reached (", MAX_ASSET_ENTRIES,
+                "). Stopping scan.");
+      return;
+    }
+
+    std::error_code entryError;
+    if (entry.is_symlink(entryError) || entryError) {
       continue;
+    }
+
+    std::string filename = entry.path().filename().string();
+    if (filename.empty() || filename[0] == '.') {
+      continue;
+    }
 
     std::filesystem::path relPath = relativePath / filename;
 
-    if (entry.is_directory()) {
-      // Register directory
+    if (entry.is_directory(entryError) && !entryError) {
+      if (ShouldSkipDirectoryName(filename)) {
+        continue;
+      }
+
       AssetMetadata meta;
       meta.uuid = GenerateUUID();
       meta.name = filename;
@@ -38,17 +80,20 @@ void AssetRegistry::ScanDirectoryRecursive(
       meta.absolutePath = entry.path();
       meta.type = AssetType::Unknown;
       meta.isDirectory = true;
-      meta.lastModified = std::filesystem::last_write_time(entry.path())
-                              .time_since_epoch()
-                              .count();
 
-      m_Assets[meta.uuid] = meta;
-      m_PathToUUID[relPath.string()] = meta.uuid;
+      std::error_code timeError;
+      auto lastWrite =
+          std::filesystem::last_write_time(entry.path(), timeError);
+      if (!timeError) {
+        meta.lastModified = lastWrite.time_since_epoch().count();
+      }
 
-      // Recurse into subdirectory
+      u64 uuid = meta.uuid;
+      m_Assets[uuid] = std::move(meta);
+      m_PathToUUID[relPath.string()] = uuid;
+
       ScanDirectoryRecursive(entry.path(), relPath);
-    } else {
-      // Register file
+    } else if (!entryError) {
       std::string extension = entry.path().extension().string();
       AssetType type = GetAssetTypeFromExtension(extension);
 
@@ -59,28 +104,41 @@ void AssetRegistry::ScanDirectoryRecursive(
       meta.absolutePath = entry.path();
       meta.type = type;
       meta.isDirectory = false;
-      meta.lastModified = std::filesystem::last_write_time(entry.path())
-                              .time_since_epoch()
-                              .count();
 
-      m_Assets[meta.uuid] = meta;
-      m_PathToUUID[relPath.string()] = meta.uuid;
+      std::error_code timeError;
+      auto lastWrite =
+          std::filesystem::last_write_time(entry.path(), timeError);
+      if (!timeError) {
+        meta.lastModified = lastWrite.time_since_epoch().count();
+      }
+
+      u64 uuid = meta.uuid;
+      m_Assets[uuid] = std::move(meta);
+      m_PathToUUID[relPath.string()] = uuid;
     }
   }
 }
 
 void AssetRegistry::Refresh() {
-  if (m_RootPath.empty())
+  std::filesystem::path rootCopy;
+  {
+    std::lock_guard<std::mutex> lock(m_Mutex);
+    rootCopy = m_RootPath;
+  }
+  if (rootCopy.empty()) {
     return;
-  ScanDirectory(m_RootPath);
+  }
+  ScanDirectory(rootCopy);
 }
 
 void AssetRegistry::Clear() {
+  std::lock_guard<std::mutex> lock(m_Mutex);
   m_Assets.clear();
   m_PathToUUID.clear();
 }
 
 const AssetMetadata *AssetRegistry::GetMetadata(u64 uuid) const {
+  std::lock_guard<std::mutex> lock(m_Mutex);
   auto it = m_Assets.find(uuid);
   if (it != m_Assets.end()) {
     return &it->second;
@@ -90,15 +148,20 @@ const AssetMetadata *AssetRegistry::GetMetadata(u64 uuid) const {
 
 const AssetMetadata *
 AssetRegistry::GetMetadata(const std::filesystem::path &path) const {
+  std::lock_guard<std::mutex> lock(m_Mutex);
   auto it = m_PathToUUID.find(path.string());
   if (it != m_PathToUUID.end()) {
-    return GetMetadata(it->second);
+    auto assetIt = m_Assets.find(it->second);
+    if (assetIt != m_Assets.end()) {
+      return &assetIt->second;
+    }
   }
   return nullptr;
 }
 
 std::vector<AssetMetadata>
 AssetRegistry::GetAssetsOfType(AssetType type) const {
+  std::lock_guard<std::mutex> lock(m_Mutex);
   std::vector<AssetMetadata> result;
   for (const auto &[uuid, meta] : m_Assets) {
     if (meta.type == type) {
@@ -110,6 +173,7 @@ AssetRegistry::GetAssetsOfType(AssetType type) const {
 
 std::vector<AssetMetadata> AssetRegistry::GetAssetsInDirectory(
     const std::filesystem::path &directory) const {
+  std::lock_guard<std::mutex> lock(m_Mutex);
   std::vector<AssetMetadata> result;
 
   for (const auto &[uuid, meta] : m_Assets) {
@@ -119,7 +183,6 @@ std::vector<AssetMetadata> AssetRegistry::GetAssetsInDirectory(
     }
   }
 
-  // Sort: directories first, then by name
   std::sort(result.begin(), result.end(),
             [](const AssetMetadata &a, const AssetMetadata &b) {
               if (a.isDirectory != b.isDirectory) {
@@ -133,7 +196,7 @@ std::vector<AssetMetadata> AssetRegistry::GetAssetsInDirectory(
 
 u64 AssetRegistry::RegisterAsset(const std::filesystem::path &path,
                                  AssetType type) {
-  // Check if already registered
+  std::lock_guard<std::mutex> lock(m_Mutex);
   auto it = m_PathToUUID.find(path.string());
   if (it != m_PathToUUID.end()) {
     return it->second;
@@ -145,25 +208,31 @@ u64 AssetRegistry::RegisterAsset(const std::filesystem::path &path,
   meta.path = path;
   meta.absolutePath = m_RootPath / path;
   meta.type = type;
-  meta.isDirectory = std::filesystem::is_directory(meta.absolutePath);
 
-  if (std::filesystem::exists(meta.absolutePath)) {
-    meta.lastModified = std::filesystem::last_write_time(meta.absolutePath)
-                            .time_since_epoch()
-                            .count();
+  std::error_code ec;
+  meta.isDirectory = std::filesystem::is_directory(meta.absolutePath, ec);
+  if (std::filesystem::exists(meta.absolutePath, ec) && !ec) {
+    std::error_code timeError;
+    auto lastWrite =
+        std::filesystem::last_write_time(meta.absolutePath, timeError);
+    if (!timeError) {
+      meta.lastModified = lastWrite.time_since_epoch().count();
+    }
   }
 
-  m_Assets[meta.uuid] = meta;
-  m_PathToUUID[path.string()] = meta.uuid;
+  u64 uuid = meta.uuid;
+  m_Assets[uuid] = std::move(meta);
+  m_PathToUUID[path.string()] = uuid;
 
   if (m_OnAssetChanged) {
-    m_OnAssetChanged(meta);
+    m_OnAssetChanged(m_Assets[uuid]);
   }
 
-  return meta.uuid;
+  return uuid;
 }
 
 void AssetRegistry::UnregisterAsset(u64 uuid) {
+  std::lock_guard<std::mutex> lock(m_Mutex);
   auto it = m_Assets.find(uuid);
   if (it != m_Assets.end()) {
     m_PathToUUID.erase(it->second.path.string());
@@ -176,44 +245,29 @@ AssetRegistry::GetAssetTypeFromExtension(const std::string &extension) {
   std::string ext = extension;
   std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
 
-  // Textures
   if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".tga" ||
       ext == ".bmp" || ext == ".hdr" || ext == ".exr") {
     return AssetType::Texture;
   }
-
-  // Materials
   if (ext == ".ginimat" || ext == ".mat" || ext == ".gmat") {
     return AssetType::Material;
   }
-
-  // Meshes
   if (ext == ".obj" || ext == ".fbx" || ext == ".gltf" || ext == ".glb" ||
       ext == ".dae") {
     return AssetType::Mesh;
   }
-
-  // Scenes
   if (ext == ".giniscene" || ext == ".scene") {
     return AssetType::Scene;
   }
-
-  // Audio
   if (ext == ".wav" || ext == ".mp3" || ext == ".ogg" || ext == ".flac") {
     return AssetType::Audio;
   }
-
-  // Scripts
   if (ext == ".lua" || ext == ".cs" || ext == ".cpp" || ext == ".h") {
     return AssetType::Script;
   }
-
-  // Shaders
   if (ext == ".glsl" || ext == ".vert" || ext == ".frag" || ext == ".shader") {
     return AssetType::Shader;
   }
-
-  // Fonts
   if (ext == ".ttf" || ext == ".otf") {
     return AssetType::Font;
   }
@@ -247,23 +301,23 @@ const char *AssetRegistry::AssetTypeToString(AssetType type) {
 const char *AssetRegistry::GetAssetTypeIcon(AssetType type) {
   switch (type) {
   case AssetType::Texture:
-    return "🖼";
+    return "T";
   case AssetType::Material:
-    return "🎨";
+    return "M";
   case AssetType::Mesh:
-    return "📦";
+    return "3D";
   case AssetType::Scene:
-    return "🎬";
+    return "S";
   case AssetType::Audio:
-    return "🔊";
+    return "A";
   case AssetType::Script:
-    return "📜";
+    return "Sc";
   case AssetType::Shader:
-    return "✨";
+    return "Sh";
   case AssetType::Font:
-    return "🔤";
+    return "F";
   default:
-    return "📄";
+    return "?";
   }
 }
 
@@ -271,6 +325,9 @@ u64 AssetRegistry::GenerateUUID() {
   static std::random_device rd;
   static std::mt19937_64 gen(rd());
   static std::uniform_int_distribution<u64> dis;
+  static std::mutex uuidMutex;
+
+  std::lock_guard<std::mutex> lock(uuidMutex);
   return dis(gen);
 }
 

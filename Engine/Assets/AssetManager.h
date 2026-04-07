@@ -1,12 +1,12 @@
 #pragma once
 
 #include "Core/Types.h"
+#include "Core/Threading.h"
 #include "Renderer/Texture.h"
 #include "Renderer/Shader.h"
 #include "Renderer/Model.h"
 #include <string>
 #include <unordered_map>
-#include <future>
 #include <queue>
 #include <mutex>
 #include <functional>
@@ -55,6 +55,7 @@ public:
     }
     
     void Init(const std::string& assetRootPath = "Assets/");
+    void Init(const std::string& assetRootPath, bool enableLoaderThread);
     void Shutdown();
     void Update();
     
@@ -106,21 +107,16 @@ private:
     
     std::string m_AssetRoot = "Assets/";
     bool m_HotReloadEnabled = false;
+    bool m_EnableLoaderThread = true;
     
     std::unordered_map<std::string, TextureHandle> m_Textures;
     std::unordered_map<std::string, ShaderHandle> m_Shaders;
     std::unordered_map<std::string, ModelHandle> m_Models;
+    mutable std::mutex m_AssetMutex;
     
-    // Async loading
-    struct AsyncTask {
-        std::string path;
-        AssetType type;
-        std::function<void()> callback;
-    };
-    
-    std::queue<AsyncTask> m_AsyncQueue;
+    WorkerThread m_AssetLoaderThread;
+    std::queue<std::function<void()>> m_CompletionQueue;
     std::mutex m_AsyncMutex;
-    std::vector<std::future<void>> m_AsyncFutures;
 };
 
 } // namespace Gini

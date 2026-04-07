@@ -706,6 +706,61 @@ void MaterialEditorPanel::DrawNodeInspector() {
     ImGui::Separator();
   }
 
+  // Material-level properties (shown when Output node is selected)
+  if (node->type == MaterialNodeType::Output && m_Material) {
+    ImGui::Separator();
+    ImGui::Text("Material Properties");
+
+    Vec3 albedo = m_Material->GetAlbedoColor();
+    if (ImGui::ColorEdit3("Albedo Color", &albedo.x)) {
+      m_Material->SetAlbedoColor(albedo);
+      m_IsDirty = true;
+    }
+
+    f32 roughness = m_Material->GetRoughness();
+    if (ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f)) {
+      m_Material->SetRoughness(roughness);
+      m_IsDirty = true;
+    }
+
+    f32 metallic = m_Material->GetMetallic();
+    if (ImGui::SliderFloat("Metallic", &metallic, 0.0f, 1.0f)) {
+      m_Material->SetMetallic(metallic);
+      m_IsDirty = true;
+    }
+
+    f32 ao = m_Material->GetAO();
+    if (ImGui::SliderFloat("AO", &ao, 0.0f, 1.0f)) {
+      m_Material->SetAO(ao);
+      m_IsDirty = true;
+    }
+
+    f32 heightScale = m_Material->GetHeightScale();
+    if (ImGui::SliderFloat("Height Scale", &heightScale, 0.0f, 0.3f, "%.3f")) {
+      m_Material->SetHeightScale(heightScale);
+      m_IsDirty = true;
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("?##HeightHelp")) {
+      ImGui::OpenPopup("HeightHelp");
+    }
+    if (ImGui::BeginPopup("HeightHelp")) {
+      ImGui::Text("Controls parallax depth intensity.");
+      ImGui::Text("Typical values: 0.01 - 0.1");
+      ImGui::Text("Connect a Height texture to the");
+      ImGui::Text("Output node's Height pin to enable.");
+      ImGui::EndPopup();
+    }
+
+    Vec2 tiling = m_Material->GetTiling();
+    if (ImGui::DragFloat2("Tiling", &tiling.x, 0.1f, 0.1f, 100.0f)) {
+      m_Material->SetTiling(tiling);
+      m_IsDirty = true;
+    }
+
+    ImGui::Separator();
+  }
+
   // Node-specific properties
   switch (node->type) {
   case MaterialNodeType::Constant:
@@ -855,7 +910,8 @@ MaterialNode *MaterialEditorPanel::CreateNode(MaterialNodeType type,
     node.inputs.push_back({GenerateId(), "Roughness", PinType::Float, true});
     node.inputs.push_back({GenerateId(), "Normal", PinType::Vec3, true});
     node.inputs.push_back({GenerateId(), "AO", PinType::Float, true});
-    node.size = Vec2(150, 140);
+    node.inputs.push_back({GenerateId(), "Height", PinType::Float, true});
+    node.size = Vec2(150, 160);
     break;
 
   case MaterialNodeType::TextureSample:
@@ -1438,11 +1494,37 @@ void MaterialEditorPanel::CompileMaterial() {
       if (sourceNode->type == MaterialNodeType::Constant) {
         m_Material->SetRoughness(sourceNode->constantValue.x);
         GINI_INFO("Set roughness: ", sourceNode->constantValue.x);
+      } else if (sourceNode->type == MaterialNodeType::TextureSample &&
+                 sourceNode->texture) {
+        m_Material->SetRoughnessTexture(sourceNode->texture);
+        GINI_INFO("Set roughness texture from node");
       }
     } else if (pin.name == "Metallic") {
       if (sourceNode->type == MaterialNodeType::Constant) {
         m_Material->SetMetallic(sourceNode->constantValue.x);
         GINI_INFO("Set metallic: ", sourceNode->constantValue.x);
+      } else if (sourceNode->type == MaterialNodeType::TextureSample &&
+                 sourceNode->texture) {
+        m_Material->SetMetallicTexture(sourceNode->texture);
+        GINI_INFO("Set metallic texture from node");
+      }
+    } else if (pin.name == "AO") {
+      if (sourceNode->type == MaterialNodeType::Constant) {
+        m_Material->SetAO(sourceNode->constantValue.x);
+        GINI_INFO("Set AO: ", sourceNode->constantValue.x);
+      } else if (sourceNode->type == MaterialNodeType::TextureSample &&
+                 sourceNode->texture) {
+        m_Material->SetAOTexture(sourceNode->texture);
+        GINI_INFO("Set AO texture from node");
+      }
+    } else if (pin.name == "Height") {
+      if (sourceNode->type == MaterialNodeType::TextureSample &&
+          sourceNode->texture) {
+        m_Material->SetHeightTexture(sourceNode->texture);
+        GINI_INFO("Set height texture from node");
+      } else if (sourceNode->type == MaterialNodeType::Constant) {
+        m_Material->SetHeightScale(sourceNode->constantValue.x);
+        GINI_INFO("Set height scale: ", sourceNode->constantValue.x);
       }
     }
   }

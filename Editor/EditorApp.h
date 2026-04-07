@@ -9,6 +9,7 @@
 #include "Panels/SceneHierarchyPanel.h"
 #include "Panels/ScenePropertiesPanel.h"
 #include "Panels/StatsPanel.h"
+#include "Panels/ThreadAnalysisPanel.h"
 #include "Panels/TerrainEditorWindow.h"
 #include "Panels/TerrainPanel.h"
 #include "Panels/WeatherPanel.h"
@@ -81,6 +82,9 @@ private:
   // Asset Browser & Material Editor
   AssetBrowserPanel m_AssetBrowserPanel;
   MaterialEditorPanel m_MaterialEditorPanel;
+
+  // Thread Analysis
+  ThreadAnalysisPanel m_ThreadAnalysisPanel;
 
   // Weather System
   WeatherPanel m_WeatherPanel;

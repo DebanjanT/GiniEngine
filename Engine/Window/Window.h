@@ -27,6 +27,8 @@ public:
     
     void Update();
     void SwapBuffers();
+    void MakeContextCurrent();
+    void DetachContext();
     bool ShouldClose() const;
     void Close();
     

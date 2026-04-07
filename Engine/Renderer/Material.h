@@ -91,8 +91,22 @@ public:
   void SetNormalTexturePath(const std::string &path) {
     m_NormalTexturePath = path;
   }
+  void SetHeightTexturePath(const std::string &path) {
+    m_HeightTexturePath = path;
+  }
+  void SetRoughnessTexturePath(const std::string &path) {
+    m_RoughnessTexturePath = path;
+  }
+  void SetMetallicTexturePath(const std::string &path) {
+    m_MetallicTexturePath = path;
+  }
+  void SetAOTexturePath(const std::string &path) { m_AOTexturePath = path; }
   std::string GetAlbedoTexturePath() const { return m_AlbedoTexturePath; }
   std::string GetNormalTexturePath() const { return m_NormalTexturePath; }
+  std::string GetHeightTexturePath() const { return m_HeightTexturePath; }
+  std::string GetRoughnessTexturePath() const { return m_RoughnessTexturePath; }
+  std::string GetMetallicTexturePath() const { return m_MetallicTexturePath; }
+  std::string GetAOTexturePath() const { return m_AOTexturePath; }
 
   // Bind material to shader
   void Bind(Ref<Shader> shader, u32 textureSlotStart = 0);
@@ -141,6 +155,10 @@ private:
   // Texture paths for serialization
   std::string m_AlbedoTexturePath;
   std::string m_NormalTexturePath;
+  std::string m_HeightTexturePath;
+  std::string m_RoughnessTexturePath;
+  std::string m_MetallicTexturePath;
+  std::string m_AOTexturePath;
 };
 
 // Material Library - manages all loaded materials

@@ -19,6 +19,9 @@ EditorApp::EditorApp()
         config.windowWidth = 1920;
         config.windowHeight = 1080;
         config.vsync = true;
+        config.enableRenderThread = false;
+        config.enableAssetLoadingThread = true;
+        config.enableNetworkThread = false;
         return config;
       }()) {}
 
@@ -120,6 +123,9 @@ void EditorApp::OnUpdate(f32 deltaTime) {
 
   // Update weather panel
   m_WeatherPanel.OnUpdate(deltaTime);
+
+  // Update thread analysis panel
+  m_ThreadAnalysisPanel.OnUpdate(deltaTime);
 
   // Update scene
   if (m_SceneState == SceneState::Play && m_ActiveScene) {
@@ -303,6 +309,7 @@ void EditorApp::OnRender() {
     m_AssetBrowserPanel.OnImGuiRender();
     m_ScenePropertiesPanel.OnImGuiRender();
     m_WeatherPanel.OnImGuiRender();
+    m_ThreadAnalysisPanel.OnImGuiRender();
   }
 
   if (m_ShowDemoWindow) {
@@ -504,6 +511,8 @@ void EditorApp::DrawMenuBar() {
       ImGui::MenuItem("Asset Browser", nullptr, &m_AssetBrowserPanel.m_Visible);
       ImGui::MenuItem("Weather System", nullptr,
                       &m_WeatherPanel.GetVisibleRef());
+      ImGui::MenuItem("Thread Analysis", nullptr,
+                      &m_ThreadAnalysisPanel.m_Visible);
       ImGui::Separator();
       ImGui::MenuItem("ImGui Demo", nullptr, &m_ShowDemoWindow);
       ImGui::EndMenu();
@@ -720,7 +729,10 @@ void EditorApp::OnProjectLoaded() {
   if (!m_ActiveProject)
     return;
 
+  GINI_INFO("OnProjectLoaded: begin");
+
   // Set as active project globally
+  GINI_INFO("OnProjectLoaded: set active project");
   Project::SetActive(m_ActiveProject);
 
   const auto &config = m_ActiveProject->GetConfig();
@@ -728,13 +740,19 @@ void EditorApp::OnProjectLoaded() {
   GINI_INFO("Assets path: ", config.assetsPath.string());
 
   // Set up Asset Browser with project assets path
+  GINI_INFO("OnProjectLoaded: set asset browser root start");
   m_AssetBrowserPanel.SetRootPath(config.assetsPath);
+  GINI_INFO("OnProjectLoaded: set asset browser root complete");
 
   // Create default scene if none exists
+  GINI_INFO("OnProjectLoaded: create new scene start");
   NewScene();
+  GINI_INFO("OnProjectLoaded: create new scene complete");
 
   // Close the launcher
+  GINI_INFO("OnProjectLoaded: close project launcher");
   m_ProjectLauncher.Close();
+  GINI_INFO("OnProjectLoaded: complete");
 }
 
 Entity EditorApp::PickEntity(const Vec2 &mousePos) {

@@ -151,6 +151,9 @@ struct EngineConfig {
   bool resizable = true;
   u32 targetFPS = 60;
   std::string assetPath = "Assets/";
+  bool enableRenderThread = false;
+  bool enableAssetLoadingThread = true;
+  bool enableNetworkThread = false;
 };
 
 } // namespace Gini

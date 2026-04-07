@@ -42,11 +42,13 @@ out vec3 v_WorldPos;
 out vec3 v_Normal;
 out vec2 v_TexCoords;
 out mat3 v_TBN;
+out vec3 v_TangentViewDir;
 
 uniform mat4 u_Model;
 uniform mat4 u_View;
 uniform mat4 u_Projection;
 uniform mat3 u_NormalMatrix;
+uniform vec3 u_CameraPos;
 
 void main() {
     v_WorldPos = vec3(u_Model * vec4(a_Position, 1.0));
@@ -57,6 +59,10 @@ void main() {
     vec3 B = normalize(u_NormalMatrix * a_Bitangent);
     vec3 N = normalize(v_Normal);
     v_TBN = mat3(T, B, N);
+    
+    // Tangent-space view direction for parallax mapping
+    mat3 TBN_inv = transpose(v_TBN);
+    v_TangentViewDir = TBN_inv * (u_CameraPos - v_WorldPos);
     
     gl_Position = u_Projection * u_View * vec4(v_WorldPos, 1.0);
 }
@@ -70,6 +76,7 @@ in vec3 v_WorldPos;
 in vec3 v_Normal;
 in vec2 v_TexCoords;
 in mat3 v_TBN;
+in vec3 v_TangentViewDir;
 
 // Material
 uniform vec3 u_Material_albedo;
@@ -84,12 +91,15 @@ uniform sampler2D u_NormalMap;
 uniform sampler2D u_MetallicMap;
 uniform sampler2D u_RoughnessMap;
 uniform sampler2D u_AOMap;
+uniform sampler2D u_HeightMap;
 
 uniform int u_HasAlbedoMap;
 uniform int u_HasNormalMap;
 uniform int u_HasMetallicMap;
 uniform int u_HasRoughnessMap;
 uniform int u_HasAOMap;
+uniform int u_HasHeightMap;
+uniform float u_HeightScale;
 
 // Lights
 struct AmbientLight {
@@ -160,7 +170,49 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+// Parallax Occlusion Mapping
+vec2 ParallaxMapping(vec2 texCoords, vec3 viewDir) {
+    const int minLayers = 8;
+    const int maxLayers = 32;
+    float numLayers = mix(float(maxLayers), float(minLayers),
+                          abs(dot(vec3(0.0, 0.0, 1.0), viewDir)));
+
+    float layerDepth = 1.0 / numLayers;
+    float currentLayerDepth = 0.0;
+    vec2 P = viewDir.xy / viewDir.z * u_HeightScale;
+    vec2 deltaTexCoords = P / numLayers;
+
+    vec2 currentTexCoords = texCoords;
+    float currentDepthMapValue = texture(u_HeightMap, currentTexCoords).r;
+
+    for (int i = 0; i < maxLayers; i++) {
+        if (currentLayerDepth >= currentDepthMapValue) break;
+        currentTexCoords -= deltaTexCoords;
+        currentDepthMapValue = texture(u_HeightMap, currentTexCoords).r;
+        currentLayerDepth += layerDepth;
+    }
+
+    // Occlusion interpolation for smoother results
+    vec2 prevTexCoords = currentTexCoords + deltaTexCoords;
+    float afterDepth  = currentDepthMapValue - currentLayerDepth;
+    float beforeDepth = texture(u_HeightMap, prevTexCoords).r
+                        - currentLayerDepth + layerDepth;
+    float weight = afterDepth / (afterDepth - beforeDepth);
+    return prevTexCoords * weight + currentTexCoords * (1.0 - weight);
+}
+
 void main() {
+    // Apply parallax mapping to texture coordinates
+    vec2 texCoords = v_TexCoords;
+    if (u_HasHeightMap == 1) {
+        vec3 tangentViewDir = normalize(v_TangentViewDir);
+        texCoords = ParallaxMapping(v_TexCoords, tangentViewDir);
+        // Discard fragments outside [0,1] to avoid edge artifacts
+        if (texCoords.x > 1.0 || texCoords.y > 1.0 ||
+            texCoords.x < 0.0 || texCoords.y < 0.0)
+            discard;
+    }
+
     // Get material properties
     vec3 albedo = u_Material_albedo;
     float metallic = u_Material_metallic;
@@ -168,22 +220,22 @@ void main() {
     float ao = u_Material_ao;
     
     if (u_HasAlbedoMap == 1) {
-        albedo = pow(texture(u_AlbedoMap, v_TexCoords).rgb, vec3(2.2));
+        albedo = pow(texture(u_AlbedoMap, texCoords).rgb, vec3(2.2));
     }
     if (u_HasMetallicMap == 1) {
-        metallic = texture(u_MetallicMap, v_TexCoords).r;
+        metallic = texture(u_MetallicMap, texCoords).r;
     }
     if (u_HasRoughnessMap == 1) {
-        roughness = texture(u_RoughnessMap, v_TexCoords).r;
+        roughness = texture(u_RoughnessMap, texCoords).r;
     }
     if (u_HasAOMap == 1) {
-        ao = texture(u_AOMap, v_TexCoords).r;
+        ao = texture(u_AOMap, texCoords).r;
     }
     
     // Normal mapping
     vec3 N = normalize(v_Normal);
     if (u_HasNormalMap == 1) {
-        N = texture(u_NormalMap, v_TexCoords).rgb;
+        N = texture(u_NormalMap, texCoords).rgb;
         N = N * 2.0 - 1.0;
         N = normalize(v_TBN * N);
     }
@@ -531,6 +583,15 @@ void Renderer3D::DrawMesh(const Ref<Mesh> &mesh, const Mat4 &transform,
     s_Data->pbrShader->SetInt("u_HasAOMap", 1);
   } else {
     s_Data->pbrShader->SetInt("u_HasAOMap", 0);
+  }
+
+  if (material.heightMap) {
+    material.heightMap->Bind(textureUnit);
+    s_Data->pbrShader->SetInt("u_HeightMap", textureUnit++);
+    s_Data->pbrShader->SetInt("u_HasHeightMap", 1);
+    s_Data->pbrShader->SetFloat("u_HeightScale", material.heightScale);
+  } else {
+    s_Data->pbrShader->SetInt("u_HasHeightMap", 0);
   }
 
   mesh->Draw();

@@ -6,11 +6,20 @@
 namespace Gini {
 
 void AssetManager::Init(const std::string& assetRootPath) {
+    Init(assetRootPath, true);
+}
+
+void AssetManager::Init(const std::string& assetRootPath, bool enableLoaderThread) {
     m_AssetRoot = assetRootPath;
+    m_EnableLoaderThread = enableLoaderThread;
+    if (m_EnableLoaderThread) {
+        m_AssetLoaderThread.Start("AssetLoadingThread");
+    }
     GINI_INFO("AssetManager initialized with root: ", m_AssetRoot);
 }
 
 void AssetManager::Shutdown() {
+    m_AssetLoaderThread.Stop();
     UnloadAll();
     GINI_INFO("AssetManager shutdown");
 }
@@ -58,10 +67,12 @@ AssetType AssetManager::GetAssetType(const std::string& path) const {
 }
 
 TextureHandle AssetManager::LoadTexture(const std::string& path) {
-    // Check cache first
-    auto it = m_Textures.find(path);
-    if (it != m_Textures.end() && it->second.IsValid()) {
-        return it->second;
+    {
+        std::lock_guard<std::mutex> lock(m_AssetMutex);
+        auto it = m_Textures.find(path);
+        if (it != m_Textures.end() && it->second.IsValid()) {
+            return it->second;
+        }
     }
     
     std::string fullPath = ResolvePath(path);
@@ -73,6 +84,7 @@ TextureHandle AssetManager::LoadTexture(const std::string& path) {
     
     if (handle.asset) {
         handle.metadata.loaded = true;
+        std::lock_guard<std::mutex> lock(m_AssetMutex);
         m_Textures[path] = handle;
         GINI_INFO("Loaded texture: ", path);
     } else {
@@ -83,9 +95,12 @@ TextureHandle AssetManager::LoadTexture(const std::string& path) {
 }
 
 ShaderHandle AssetManager::LoadShader(const std::string& path) {
-    auto it = m_Shaders.find(path);
-    if (it != m_Shaders.end() && it->second.IsValid()) {
-        return it->second;
+    {
+        std::lock_guard<std::mutex> lock(m_AssetMutex);
+        auto it = m_Shaders.find(path);
+        if (it != m_Shaders.end() && it->second.IsValid()) {
+            return it->second;
+        }
     }
     
     std::string fullPath = ResolvePath(path);
@@ -97,6 +112,7 @@ ShaderHandle AssetManager::LoadShader(const std::string& path) {
     
     if (handle.asset) {
         handle.metadata.loaded = true;
+        std::lock_guard<std::mutex> lock(m_AssetMutex);
         m_Shaders[path] = handle;
         GINI_INFO("Loaded shader: ", path);
     } else {
@@ -107,9 +123,12 @@ ShaderHandle AssetManager::LoadShader(const std::string& path) {
 }
 
 ShaderHandle AssetManager::LoadShader(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc) {
-    auto it = m_Shaders.find(name);
-    if (it != m_Shaders.end() && it->second.IsValid()) {
-        return it->second;
+    {
+        std::lock_guard<std::mutex> lock(m_AssetMutex);
+        auto it = m_Shaders.find(name);
+        if (it != m_Shaders.end() && it->second.IsValid()) {
+            return it->second;
+        }
     }
     
     ShaderHandle handle;
@@ -119,6 +138,7 @@ ShaderHandle AssetManager::LoadShader(const std::string& name, const std::string
     
     if (handle.asset) {
         handle.metadata.loaded = true;
+        std::lock_guard<std::mutex> lock(m_AssetMutex);
         m_Shaders[name] = handle;
         GINI_INFO("Created shader: ", name);
     } else {
@@ -129,9 +149,12 @@ ShaderHandle AssetManager::LoadShader(const std::string& name, const std::string
 }
 
 ModelHandle AssetManager::LoadModel(const std::string& path) {
-    auto it = m_Models.find(path);
-    if (it != m_Models.end() && it->second.IsValid()) {
-        return it->second;
+    {
+        std::lock_guard<std::mutex> lock(m_AssetMutex);
+        auto it = m_Models.find(path);
+        if (it != m_Models.end() && it->second.IsValid()) {
+            return it->second;
+        }
     }
     
     std::string fullPath = ResolvePath(path);
@@ -143,6 +166,7 @@ ModelHandle AssetManager::LoadModel(const std::string& path) {
     
     if (handle.asset) {
         handle.metadata.loaded = true;
+        std::lock_guard<std::mutex> lock(m_AssetMutex);
         m_Models[path] = handle;
         GINI_INFO("Loaded model: ", path);
     } else {
@@ -153,28 +177,39 @@ ModelHandle AssetManager::LoadModel(const std::string& path) {
 }
 
 void AssetManager::LoadTextureAsync(const std::string& path, std::function<void(TextureHandle)> callback) {
-    std::lock_guard<std::mutex> lock(m_AsyncMutex);
-    
-    m_AsyncFutures.push_back(std::async(std::launch::async, [this, path, callback]() {
+    auto loadTask = [this, path, callback]() {
         TextureHandle handle = LoadTexture(path);
-        if (callback) {
-            callback(handle);
+        if (callback) { 
+            std::lock_guard<std::mutex> lock(m_AsyncMutex);
+            m_CompletionQueue.push([callback, handle]() { callback(handle); });
         }
-    }));
+    };
+
+    if (m_EnableLoaderThread && m_AssetLoaderThread.IsRunning()) {
+        m_AssetLoaderThread.Submit(loadTask);
+    } else {
+        loadTask();
+    }
 }
 
 void AssetManager::LoadModelAsync(const std::string& path, std::function<void(ModelHandle)> callback) {
-    std::lock_guard<std::mutex> lock(m_AsyncMutex);
-    
-    m_AsyncFutures.push_back(std::async(std::launch::async, [this, path, callback]() {
+    auto loadTask = [this, path, callback]() {
         ModelHandle handle = LoadModel(path);
         if (callback) {
-            callback(handle);
+            std::lock_guard<std::mutex> lock(m_AsyncMutex);
+            m_CompletionQueue.push([callback, handle]() { callback(handle); });
         }
-    }));
+    };
+
+    if (m_EnableLoaderThread && m_AssetLoaderThread.IsRunning()) {
+        m_AssetLoaderThread.Submit(loadTask);
+    } else {
+        loadTask();
+    }
 }
 
 TextureHandle AssetManager::GetTexture(const std::string& path) {
+    std::lock_guard<std::mutex> lock(m_AssetMutex);
     auto it = m_Textures.find(path);
     if (it != m_Textures.end()) {
         return it->second;
@@ -183,6 +218,7 @@ TextureHandle AssetManager::GetTexture(const std::string& path) {
 }
 
 ShaderHandle AssetManager::GetShader(const std::string& name) {
+    std::lock_guard<std::mutex> lock(m_AssetMutex);
     auto it = m_Shaders.find(name);
     if (it != m_Shaders.end()) {
         return it->second;
@@ -191,6 +227,7 @@ ShaderHandle AssetManager::GetShader(const std::string& name) {
 }
 
 ModelHandle AssetManager::GetModel(const std::string& path) {
+    std::lock_guard<std::mutex> lock(m_AssetMutex);
     auto it = m_Models.find(path);
     if (it != m_Models.end()) {
         return it->second;
@@ -199,33 +236,40 @@ ModelHandle AssetManager::GetModel(const std::string& path) {
 }
 
 bool AssetManager::IsTextureLoaded(const std::string& path) const {
+    std::lock_guard<std::mutex> lock(m_AssetMutex);
     auto it = m_Textures.find(path);
     return it != m_Textures.end() && it->second.IsValid();
 }
 
 bool AssetManager::IsShaderLoaded(const std::string& name) const {
+    std::lock_guard<std::mutex> lock(m_AssetMutex);
     auto it = m_Shaders.find(name);
     return it != m_Shaders.end() && it->second.IsValid();
 }
 
 bool AssetManager::IsModelLoaded(const std::string& path) const {
+    std::lock_guard<std::mutex> lock(m_AssetMutex);
     auto it = m_Models.find(path);
     return it != m_Models.end() && it->second.IsValid();
 }
 
 void AssetManager::UnloadTexture(const std::string& path) {
+    std::lock_guard<std::mutex> lock(m_AssetMutex);
     m_Textures.erase(path);
 }
 
 void AssetManager::UnloadShader(const std::string& name) {
+    std::lock_guard<std::mutex> lock(m_AssetMutex);
     m_Shaders.erase(name);
 }
 
 void AssetManager::UnloadModel(const std::string& path) {
+    std::lock_guard<std::mutex> lock(m_AssetMutex);
     m_Models.erase(path);
 }
 
 void AssetManager::UnloadAll() {
+    std::lock_guard<std::mutex> lock(m_AssetMutex);
     m_Textures.clear();
     m_Shaders.clear();
     m_Models.clear();
@@ -238,6 +282,7 @@ void AssetManager::CheckForChanges() {
 
 u64 AssetManager::GetTotalMemoryUsage() const {
     u64 total = 0;
+    std::lock_guard<std::mutex> lock(m_AssetMutex);
     
     for (const auto& [path, handle] : m_Textures) {
         if (handle.asset) {
@@ -249,14 +294,16 @@ u64 AssetManager::GetTotalMemoryUsage() const {
 }
 
 void AssetManager::ProcessAsyncQueue() {
-    // Clean up completed futures
-    m_AsyncFutures.erase(
-        std::remove_if(m_AsyncFutures.begin(), m_AsyncFutures.end(),
-            [](std::future<void>& f) {
-                return f.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
-            }),
-        m_AsyncFutures.end()
-    );
+    std::queue<std::function<void()>> localQueue;
+    {
+        std::lock_guard<std::mutex> lock(m_AsyncMutex);
+        std::swap(localQueue, m_CompletionQueue);
+    }
+
+    while (!localQueue.empty()) {
+        localQueue.front()();
+        localQueue.pop();
+    }
 }
 
 } // namespace Gini

@@ -18,6 +18,9 @@ public:
         config.windowWidth = 1280;
         config.windowHeight = 720;
         config.vsync = true;
+        config.enableRenderThread = true;
+        config.enableAssetLoadingThread = true;
+        config.enableNetworkThread = false;
         return config;
     }
     

@@ -3,7 +3,9 @@
 #include "Types.h"
 #include "Event.h"
 #include "Timer.h"
+#include "Threading.h"
 #include "Window/Window.h"
+#include <mutex>
 
 namespace Gini {
 
@@ -41,6 +43,11 @@ protected:
     
     DeltaTime m_DeltaTime;
     FixedTimestep m_FixedTimestep;
+    RenderThread m_RenderThread;
+    std::mutex m_RenderStateMutex;
+    u32 m_PendingViewportWidth = 0;
+    u32 m_PendingViewportHeight = 0;
+    bool m_HasPendingViewportResize = false;
     
 private:
     void OnEventInternal(Event& event);

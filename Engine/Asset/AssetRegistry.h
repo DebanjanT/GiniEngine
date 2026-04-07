@@ -2,6 +2,7 @@
 
 #include "../Core/Types.h"
 #include <filesystem>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -72,11 +73,14 @@ private:
   AssetRegistry() = default;
   
   void ScanDirectoryRecursive(const std::filesystem::path& directory, const std::filesystem::path& relativePath);
+  bool ShouldSkipDirectoryName(const std::string& name) const;
   u64 GenerateUUID();
   
+  mutable std::mutex m_Mutex;
   std::unordered_map<u64, AssetMetadata> m_Assets;
   std::unordered_map<std::string, u64> m_PathToUUID;  // path string -> UUID
   std::filesystem::path m_RootPath;
+  static constexpr size_t MAX_ASSET_ENTRIES = 20000;
   
   AssetChangedCallback m_OnAssetChanged;
 };

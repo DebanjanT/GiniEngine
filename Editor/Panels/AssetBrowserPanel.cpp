@@ -2,19 +2,25 @@
 #include "Core/Logger.h"
 #include "Project/Project.h"
 #include <algorithm>
-#include <fstream>
+#include <cstdio>
 #include <imgui.h>
-#include <yaml-cpp/yaml.h>
 
 namespace Gini {
 
 AssetBrowserPanel::AssetBrowserPanel() : EditorPanel("Asset Browser") {}
 
 void AssetBrowserPanel::SetRootPath(const std::filesystem::path &path) {
+  GINI_INFO("AssetBrowserPanel::SetRootPath start: ", path.string());
   m_RootPath = path;
   m_CurrentDirectory = path;
+  m_BackHistory.clear();
+  m_ForwardHistory.clear();
+  m_ThumbnailCache.clear();
+
   AssetRegistry::Get().SetRootPath(path);
   AssetRegistry::Get().ScanDirectory(path);
+
+  GINI_INFO("AssetBrowserPanel::SetRootPath end");
 }
 
 void AssetBrowserPanel::Refresh() { AssetRegistry::Get().Refresh(); }
@@ -72,8 +78,12 @@ void AssetBrowserPanel::DrawTopBar() {
 
   // Current path display
   ImGui::SameLine();
-  std::filesystem::path relativePath =
-      std::filesystem::relative(m_CurrentDirectory, m_RootPath);
+  std::filesystem::path relativePath;
+  std::error_code relError;
+  relativePath = std::filesystem::relative(m_CurrentDirectory, m_RootPath, relError);
+  if (relError) {
+    relativePath.clear();
+  }
   std::string pathStr = "Assets";
   if (!relativePath.empty() && relativePath != ".") {
     pathStr += "/" + relativePath.string();
@@ -84,7 +94,7 @@ void AssetBrowserPanel::DrawTopBar() {
   ImGui::SameLine(ImGui::GetWindowWidth() - 250);
   ImGui::SetNextItemWidth(150);
   char searchBuffer[256];
-  strncpy(searchBuffer, m_SearchFilter.c_str(), sizeof(searchBuffer));
+  std::snprintf(searchBuffer, sizeof(searchBuffer), "%s", m_SearchFilter.c_str());
   if (ImGui::InputText("##Search", searchBuffer, sizeof(searchBuffer))) {
     m_SearchFilter = searchBuffer;
   }
@@ -125,12 +135,21 @@ void AssetBrowserPanel::DrawDirectoryTreeNode(
   if (!std::filesystem::exists(directory))
     return;
 
-  for (const auto &entry : std::filesystem::directory_iterator(directory)) {
+  std::error_code dirError;
+  for (const auto &entry : std::filesystem::directory_iterator(
+           directory, std::filesystem::directory_options::skip_permission_denied,
+           dirError)) {
+    if (dirError) {
+      return;
+    }
+
     if (!entry.is_directory())
+      continue;
+    if (entry.is_symlink())
       continue;
 
     std::string filename = entry.path().filename().string();
-    if (filename[0] == '.')
+    if (filename.empty() || filename[0] == '.')
       continue; // Skip hidden
 
     ImGuiTreeNodeFlags flags =
@@ -138,10 +157,19 @@ void AssetBrowserPanel::DrawDirectoryTreeNode(
 
     // Check if this directory has subdirectories
     bool hasSubdirs = false;
-    for (const auto &subEntry :
-         std::filesystem::directory_iterator(entry.path())) {
-      if (subEntry.is_directory() &&
-          subEntry.path().filename().string()[0] != '.') {
+    std::error_code subDirError;
+    for (const auto &subEntry : std::filesystem::directory_iterator(
+             entry.path(),
+             std::filesystem::directory_options::skip_permission_denied,
+             subDirError)) {
+      if (subDirError) {
+        break;
+      }
+      std::string subName = subEntry.path().filename().string();
+      if (subEntry.is_directory() && !subName.empty() && subName[0] != '.') {
+        if (subEntry.is_symlink()) {
+          continue;
+        }
         hasSubdirs = true;
         break;
       }
@@ -185,8 +213,12 @@ void AssetBrowserPanel::DrawContentArea() {
   ImGui::Columns(columnCount, nullptr, false);
 
   // Get assets in current directory
-  std::filesystem::path relativePath =
-      std::filesystem::relative(m_CurrentDirectory, m_RootPath);
+  std::filesystem::path relativePath;
+  std::error_code relError;
+  relativePath = std::filesystem::relative(m_CurrentDirectory, m_RootPath, relError);
+  if (relError) {
+    relativePath.clear();
+  }
   if (relativePath == ".")
     relativePath = "";
 
@@ -228,6 +260,57 @@ void AssetBrowserPanel::DrawAssetItem(const AssetMetadata &asset) {
     ImGui::ImageButton("##thumb", (ImTextureID)(intptr_t)icon->GetID(),
                        buttonSize, ImVec2(0, 1), ImVec2(1, 0));
     ImGui::PopStyleColor(); // Pop the transparent button background
+
+    // Handle double-click
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
+      if (asset.isDirectory) {
+        NavigateTo(asset.absolutePath);
+      } else {
+        GINI_INFO("Opening asset: ", asset.name);
+      }
+    }
+
+    // Drag source
+    if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID)) {
+      const char *payloadType = PAYLOAD_ASSET;
+      if (asset.type == AssetType::Texture)
+        payloadType = PAYLOAD_TEXTURE;
+      else if (asset.type == AssetType::Material)
+        payloadType = PAYLOAD_MATERIAL;
+
+      std::string pathStr = asset.absolutePath.string();
+      ImGui::SetDragDropPayload(payloadType, pathStr.c_str(),
+                                pathStr.size() + 1);
+      ImGui::Text("%s", asset.name.c_str());
+      ImGui::EndDragDropSource();
+    }
+
+    // Tooltip
+    if (ImGui::IsItemHovered()) {
+      ImGui::BeginTooltip();
+      ImGui::Text("%s", asset.name.c_str());
+      if (!asset.isDirectory) {
+        ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "Type: %s",
+                           AssetRegistry::AssetTypeToString(asset.type));
+      }
+      ImGui::EndTooltip();
+    }
+
+    // Draw name (truncated if too long)
+    std::string displayName = asset.name;
+    float textWidth = ImGui::CalcTextSize(displayName.c_str()).x;
+    if (textWidth > m_ThumbnailSize) {
+      while (textWidth > m_ThumbnailSize - 20 && displayName.length() > 3) {
+        displayName = displayName.substr(0, displayName.length() - 1);
+        textWidth = ImGui::CalcTextSize((displayName + "...").c_str()).x;
+      }
+      displayName += "...";
+    }
+
+    float textX =
+        (m_ThumbnailSize - ImGui::CalcTextSize(displayName.c_str()).x) * 0.5f;
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + textX);
+    ImGui::TextWrapped("%s", displayName.c_str());
   } else {
     // Fallback: colored button with type indicator
     ImVec4 color;
@@ -350,8 +433,9 @@ void AssetBrowserPanel::DrawAssetItem(const AssetMetadata &asset) {
     ImGui::SetCursorPosX(ImGui::GetCursorPosX() + textX);
     ImGui::TextWrapped("%s", displayName.c_str());
 
-    ImGui::PopID();
   }
+
+  ImGui::PopID();
 }
 
 void AssetBrowserPanel::DrawContextMenu() {
@@ -412,50 +496,10 @@ Ref<Texture2D> AssetBrowserPanel::GetThumbnail(const AssetMetadata &asset) {
     return m_FolderIcon;
   }
 
-  // For textures, try to load the actual texture as thumbnail
-  if (asset.type == AssetType::Texture) {
-    auto it = m_ThumbnailCache.find(asset.absolutePath.string());
-    if (it != m_ThumbnailCache.end()) {
-      return it->second;
-    }
-
-    // Load texture (could be async in a real implementation)
-    try {
-      Ref<Texture2D> tex = Texture2D::Create(asset.absolutePath.string());
-      if (tex) {
-        m_ThumbnailCache[asset.absolutePath.string()] = tex;
-        return tex;
-      }
-    } catch (...) {
-      // Failed to load, use default icon
-    }
-  }
-
-  // For materials (.gmat), try to load the albedo texture as thumbnail
-  if (asset.type == AssetType::Material) {
-    auto it = m_ThumbnailCache.find(asset.absolutePath.string());
-    if (it != m_ThumbnailCache.end()) {
-      return it->second;
-    }
-
-    try {
-      YAML::Node data = YAML::LoadFile(asset.absolutePath.string());
-      if (data["Material"]) {
-        auto material = data["Material"];
-        if (material["AlbedoTexture"]) {
-          std::string texturePath = material["AlbedoTexture"].as<std::string>();
-          if (std::filesystem::exists(texturePath)) {
-            Ref<Texture2D> tex = Texture2D::Create(texturePath);
-            if (tex) {
-              m_ThumbnailCache[asset.absolutePath.string()] = tex;
-              return tex;
-            }
-          }
-        }
-      }
-    } catch (...) {
-      // Failed to parse material, use default icon
-    }
+  // Avoid loading full textures during browsing to prevent memory spikes on
+  // large projects. Keep browser lightweight and use type icons/fallback tiles.
+  if (asset.type == AssetType::Texture || asset.type == AssetType::Material) {
+    return GetIconForAssetType(asset.type);
   }
 
   return GetIconForAssetType(asset.type);

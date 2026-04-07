@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Core/Types.h"
+#include "Core/Threading.h"
+#include <atomic>
 #include <string>
 #include <vector>
 #include <functional>
@@ -130,6 +132,9 @@ private:
     
     void PollEvents();
     void HandlePacket(const Packet& packet, u32 senderId);
+    void StartNetworkThread();
+    void StopNetworkThread();
+    void NetworkThreadMain();
     
     NetworkMode m_Mode = NetworkMode::None;
     ConnectionState m_State = ConnectionState::Disconnected;
@@ -152,6 +157,8 @@ private:
     std::function<void()> m_OnDisconnected;
     
     NetworkStats m_Stats;
+    WorkerThread m_NetworkThread;
+    std::atomic<bool> m_ThreadedUpdateEnabled{true};
     
     // Platform-specific socket handle (void* for cross-platform)
     void* m_Socket = nullptr;

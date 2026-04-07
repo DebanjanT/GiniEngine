@@ -26,6 +26,8 @@ struct Material3D {
   Vec3 emissive = Vec3(0.0f);
   f32 emissiveStrength = 1.0f;
 
+  f32 heightScale = 0.05f;
+
   // Textures
   Ref<Texture2D> albedoMap;
   Ref<Texture2D> normalMap;
@@ -33,6 +35,7 @@ struct Material3D {
   Ref<Texture2D> roughnessMap;
   Ref<Texture2D> aoMap;
   Ref<Texture2D> emissiveMap;
+  Ref<Texture2D> heightMap;
 
   // Legacy properties (for non-PBR)
   Vec3 diffuse = Vec3(1.0f);

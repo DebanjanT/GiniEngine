@@ -298,7 +298,8 @@ void main() {
     float ao = u_Material_ao;
     
     if (u_HasAlbedoMap == 1) {
-        albedo *= pow(texture(u_AlbedoMap, texCoords).rgb, vec3(2.2));
+        // Use albedo texture directly - GLB embedded textures are already in correct color space
+        albedo *= texture(u_AlbedoMap, texCoords).rgb;
     } else {
         // Many FBX assets rely on vertex colors when no albedo map exists.
         albedo *= v_Color.rgb;
@@ -450,6 +451,12 @@ void main() {
     vec3 emissive = u_Material_emissive;
 
     vec3 color = ambient + Lo + emissive;
+    
+    // Ensure base albedo is always visible to prevent white/gray appearance
+    if (u_HasAlbedoMap == 1) {
+        // Add a small amount of base albedo to ensure visibility
+        color = mix(color, albedo * 0.5, 0.3);
+    }
 
     FragColor = vec4(color, 1.0);
     gNormal = N * 0.5 + 0.5;
@@ -772,8 +779,11 @@ void Renderer3D::DrawMesh(const Ref<Mesh> &mesh, const Mat4 &transform,
     material.albedoMap->Bind(textureUnit);
     s_Data->pbrShader->SetInt("u_AlbedoMap", textureUnit++);
     s_Data->pbrShader->SetInt("u_HasAlbedoMap", 1);
+    GINI_DEBUG("DrawMesh: Bound albedo texture id=",
+               material.albedoMap->GetID(), " to unit ", textureUnit - 1);
   } else {
     s_Data->pbrShader->SetInt("u_HasAlbedoMap", 0);
+    GINI_DEBUG("DrawMesh: No albedo texture available, using material color");
   }
 
   if (material.normalMap) {

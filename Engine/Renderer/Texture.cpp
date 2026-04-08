@@ -62,7 +62,8 @@ Texture2D::Texture2D(const std::string &path) : m_Path(path) {
   GLfloat maxAniso = 1.0f;
   glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &maxAniso);
   if (maxAniso > 1.0f)
-    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY, std::min(maxAniso, 16.0f));
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY,
+                    std::min(maxAniso, 16.0f));
 
   glTexImage2D(GL_TEXTURE_2D, 0, m_InternalFormat, width, height, 0,
                m_DataFormat, GL_UNSIGNED_BYTE, data);
@@ -148,13 +149,32 @@ Ref<Texture2D> Texture2D::CreateFromMemory(const unsigned char *buffer,
     return nullptr;
 
   int width, height, channels;
-  stbi_set_flip_vertically_on_load(1);
-  unsigned char *data = stbi_load_from_memory(
-      buffer, static_cast<int>(length), &width, &height, &channels, 0);
+  // Don't flip embedded textures from GLB files - they're already in correct
+  // orientation
+  stbi_set_flip_vertically_on_load(0);
+  unsigned char *data = stbi_load_from_memory(buffer, static_cast<int>(length),
+                                              &width, &height, &channels, 0);
   if (!data) {
     GINI_ERROR("CreateFromMemory: stbi could not decode embedded image");
     return nullptr;
   }
+
+  GINI_DEBUG("CreateFromMemory: Successfully loaded embedded texture ", width,
+             "x", height, " ", channels, " channels");
+
+  // Check if the texture data is valid (not all black)
+  bool hasValidData = false;
+  for (int i = 0; i < width * height * channels; i += channels) {
+    if (data[i] > 10 || data[i + 1] > 10 || data[i + 2] > 10) {
+      hasValidData = true;
+      break;
+    }
+  }
+
+  if (!hasValidData) {
+    GINI_WARN("CreateFromMemory: Embedded texture appears to be mostly black");
+  }
+
   return Ref<Texture2D>(new Texture2D(data, width, height, channels));
 }
 

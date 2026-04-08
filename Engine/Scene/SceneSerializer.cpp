@@ -310,9 +310,8 @@ bool SceneSerializer::DeserializeFromString(const std::string &yamlString) {
         if (meshComponent["ReceiveShadows"])
           mc.receiveShadows = meshComponent["ReceiveShadows"].as<bool>();
 
-        if (mc.meshType == MeshType::Custom && !mc.modelPath.empty()) {
-          ModelCache::Get().Load(mc.modelPath);
-        }
+        // Model will be loaded on-demand during rendering, not during scene
+        // deserialization
       }
 
       // MaterialComponent

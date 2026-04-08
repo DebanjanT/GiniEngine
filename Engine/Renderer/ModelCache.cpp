@@ -23,6 +23,7 @@ Ref<Model> ModelCache::Load(const std::string &filepath) {
     auto wtIt = m_FileWriteTimes.find(filepath);
     if (!hasWriteTime || wtIt == m_FileWriteTimes.end() ||
         wtIt->second == currentWriteTime) {
+      GINI_DEBUG("ModelCache hit: reusing cached model '", filepath, "'");
       return it->second;
     }
 

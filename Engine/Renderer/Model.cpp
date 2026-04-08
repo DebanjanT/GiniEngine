@@ -41,14 +41,9 @@ bool Model::LoadFromFile(const std::string &filepath) {
   for (auto &c : extension)
     c = static_cast<char>(std::tolower(c));
 
-  if (extension == "obj") {
-    return LoadOBJ(filepath);
-  } else if (extension == "gltf" || extension == "glb") {
-    return LoadGLTF(filepath);
-  } else {
-    // Try Assimp for other formats
-    return LoadOBJ(filepath); // Assimp handles many formats
-  }
+  // Use Assimp for all formats when dedicated SDKs are not available
+  return LoadOBJ(
+      filepath); // Assimp handles OBJ, FBX, GLB, GLTF and many other formats
 }
 
 bool Model::LoadOBJ(const std::string &filepath) {
@@ -71,11 +66,13 @@ bool Model::LoadOBJ(const std::string &filepath) {
     aiMaterial *aiMat = scene->mMaterials[i];
 
     // Set reasonable defaults for PBR properties
-    material.albedo = Vec3(1.0f, 1.0f, 1.0f);
+    material.albedo =
+        Vec3(1.0f, 1.0f,
+             1.0f); // Pure white base color - texture will provide actual color
     material.diffuse = material.albedo;
-    material.metallic = 0.0f;
-    material.roughness = 0.5f;
-    material.ao = 0.5f; // Lower default AO to prevent overly dark appearance
+    material.metallic = 0.1f;  // Small metallic value for some reflection
+    material.roughness = 0.3f; // Lower roughness for more reflection
+    material.ao = 1.0f; // Full ambient occlusion to prevent flat appearance
     material.emissive = Vec3(0.0f, 0.0f, 0.0f);
 
     aiString name;
@@ -160,8 +157,8 @@ bool Model::LoadOBJ(const std::string &filepath) {
     if (aiMat->Get(AI_MATKEY_ROUGHNESS_FACTOR, roughnessFactor) == AI_SUCCESS) {
       // Clamp roughness to reasonable range to prevent overly matte appearance
       f32 rawRoughness = static_cast<f32>(roughnessFactor);
-      material.roughness =
-          glm::clamp(rawRoughness, 0.0f, 0.8f); // Max 0.8 for some reflection
+      material.roughness = glm::clamp(
+          rawRoughness, 0.05f, 0.7f); // Min 0.05, Max 0.7 for better reflection
       GINI_DEBUG("  GLB roughness factor found: ", rawRoughness,
                  " clamped to: ", material.roughness);
     } else {
@@ -376,8 +373,11 @@ void Model::LoadMaterialTextures(Material3D &material, const aiMaterial *aiMat,
         std::string cacheKey =
             m_Filepath + "|embed|" + std::to_string(embedIndex);
         auto cached = m_TextureCache.find(cacheKey);
-        if (cached != m_TextureCache.end())
+        if (cached != m_TextureCache.end()) {
+          GINI_DEBUG("Texture cache hit for key: ", cacheKey,
+                     " texture id: ", cached->second->GetID());
           return cached->second;
+        }
 
         const aiTexture *aiTex = scene->mTextures[embedIndex];
         Ref<Texture2D> texture;
@@ -532,8 +532,12 @@ void Model::DrawMesh(u32 index, Shader *shader) const {
         mat.albedoMap->Bind(textureUnit);
         shader->SetInt("u_AlbedoMap", textureUnit++);
         shader->SetInt("u_HasAlbedoMap", 1);
+        GINI_DEBUG("DrawMesh: Bound albedo texture id=", mat.albedoMap->GetID(),
+                   " to unit ", textureUnit - 1);
       } else {
         shader->SetInt("u_HasAlbedoMap", 0);
+        GINI_DEBUG(
+            "DrawMesh: No albedo texture available, using material color");
       }
 
       if (mat.normalMap) {

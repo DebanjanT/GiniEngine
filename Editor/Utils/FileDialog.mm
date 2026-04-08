@@ -1,8 +1,45 @@
 #include "FileDialog.h"
 
+#include <cctype>
+#include <sstream>
+#include <string>
+
 #ifdef __APPLE__
 #import <Cocoa/Cocoa.h>
 #endif
+
+namespace {
+
+// macOS NSOpenPanel expects one extension per allowed type (e.g. "obj", "fbx"),
+// not a comma-separated list in a single string.
+static std::string TrimExtensionToken(const std::string &s) {
+  size_t start = 0;
+  while (start < s.size() &&
+         std::isspace(static_cast<unsigned char>(s[start])))
+    start++;
+  size_t end = s.size();
+  while (end > start &&
+         std::isspace(static_cast<unsigned char>(s[end - 1])))
+    end--;
+  std::string out = s.substr(start, end - start);
+  if (!out.empty() && out[0] == '.')
+    out = out.substr(1);
+  return out;
+}
+
+static void AddAllowedExtensions(const std::string &extensions,
+                                 NSMutableArray *allowedTypes) {
+  std::stringstream ss(extensions);
+  std::string token;
+  while (std::getline(ss, token, ',')) {
+    std::string ext = TrimExtensionToken(token);
+    if (ext.empty())
+      continue;
+    [allowedTypes addObject:[NSString stringWithUTF8String:ext.c_str()]];
+  }
+}
+
+} // namespace
 
 namespace Gini {
 
@@ -18,10 +55,11 @@ std::string FileDialog::OpenFile(const std::vector<FileDialogFilter>& filters) {
     if (!filters.empty()) {
       NSMutableArray* allowedTypes = [NSMutableArray array];
       for (const auto& filter : filters) {
-        NSString* ext = [NSString stringWithUTF8String:filter.extensions.c_str()];
-        [allowedTypes addObject:ext];
+        AddAllowedExtensions(filter.extensions, allowedTypes);
       }
-      [panel setAllowedFileTypes:allowedTypes];
+      if ([allowedTypes count] > 0) {
+        [panel setAllowedFileTypes:allowedTypes];
+      }
     }
     
     if ([panel runModal] == NSModalResponseOK) {
@@ -45,10 +83,11 @@ std::vector<std::string> FileDialog::OpenFiles(const std::vector<FileDialogFilte
     if (!filters.empty()) {
       NSMutableArray* allowedTypes = [NSMutableArray array];
       for (const auto& filter : filters) {
-        NSString* ext = [NSString stringWithUTF8String:filter.extensions.c_str()];
-        [allowedTypes addObject:ext];
+        AddAllowedExtensions(filter.extensions, allowedTypes);
       }
-      [panel setAllowedFileTypes:allowedTypes];
+      if ([allowedTypes count] > 0) {
+        [panel setAllowedFileTypes:allowedTypes];
+      }
     }
     
     if ([panel runModal] == NSModalResponseOK) {
@@ -91,10 +130,11 @@ std::string FileDialog::SaveFile(const std::vector<FileDialogFilter>& filters,
     if (!filters.empty()) {
       NSMutableArray* allowedTypes = [NSMutableArray array];
       for (const auto& filter : filters) {
-        NSString* ext = [NSString stringWithUTF8String:filter.extensions.c_str()];
-        [allowedTypes addObject:ext];
+        AddAllowedExtensions(filter.extensions, allowedTypes);
       }
-      [panel setAllowedFileTypes:allowedTypes];
+      if ([allowedTypes count] > 0) {
+        [panel setAllowedFileTypes:allowedTypes];
+      }
     }
     
     if ([panel runModal] == NSModalResponseOK) {

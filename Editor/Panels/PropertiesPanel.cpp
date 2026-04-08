@@ -1,5 +1,7 @@
 #include "PropertiesPanel.h"
+#include "AssetBrowserPanel.h"
 #include "ECS/Components.h"
+#include <cstring>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -30,19 +32,30 @@ void PropertiesPanel::OnImGuiRender() {
     }
 
     if (ImGui::BeginPopup("AddComponent")) {
+      auto &addWorld = m_Scene->GetWorld();
       if (ImGui::MenuItem("Sprite")) {
-        if (!m_Scene->GetWorld().HasComponent<SpriteComponent>(
-                m_SelectedEntity)) {
-          m_Scene->GetWorld().AddComponent<SpriteComponent>(m_SelectedEntity);
-        }
+        if (!addWorld.HasComponent<SpriteComponent>(m_SelectedEntity))
+          addWorld.AddComponent<SpriteComponent>(m_SelectedEntity);
         ImGui::CloseCurrentPopup();
       }
-      if (ImGui::MenuItem("Camera")) {
-        // Add camera component
+      if (ImGui::MenuItem("Mesh")) {
+        if (!addWorld.HasComponent<MeshComponent>(m_SelectedEntity))
+          addWorld.AddComponent<MeshComponent>(m_SelectedEntity);
+        ImGui::CloseCurrentPopup();
+      }
+      if (ImGui::MenuItem("Material")) {
+        if (!addWorld.HasComponent<MaterialComponent>(m_SelectedEntity))
+          addWorld.AddComponent<MaterialComponent>(m_SelectedEntity);
         ImGui::CloseCurrentPopup();
       }
       if (ImGui::MenuItem("Light")) {
-        // Add light component
+        if (!addWorld.HasComponent<LightComponent>(m_SelectedEntity))
+          addWorld.AddComponent<LightComponent>(m_SelectedEntity);
+        ImGui::CloseCurrentPopup();
+      }
+      if (ImGui::MenuItem("Camera")) {
+        if (!addWorld.HasComponent<CameraComponent>(m_SelectedEntity))
+          addWorld.AddComponent<CameraComponent>(m_SelectedEntity);
         ImGui::CloseCurrentPopup();
       }
       ImGui::EndPopup();
@@ -139,6 +152,186 @@ void PropertiesPanel::DrawComponents(Entity entity) {
 
     if (removeComponent) {
       world.RemoveComponent<SpriteComponent>(entity);
+    }
+  }
+
+  // MeshComponent
+  if (world.HasComponent<MeshComponent>(entity)) {
+    ImGuiTreeNodeFlags flags =
+        ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed |
+        ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap;
+
+    bool removeMesh = false;
+    bool open = ImGui::TreeNodeEx((void *)typeid(MeshComponent).hash_code(),
+                                  flags, "Mesh");
+    ImGui::SameLine(ImGui::GetWindowWidth() - 25);
+    if (ImGui::Button("X##mesh", ImVec2(20, 20))) {
+      removeMesh = true;
+    }
+
+    if (open) {
+      auto &mc = world.GetComponent<MeshComponent>(entity);
+
+      const char *meshTypes[] = {"None", "Cube", "Sphere", "Plane", "Cylinder", "Custom"};
+      int currentType = static_cast<int>(mc.meshType);
+      if (ImGui::Combo("Mesh Type", &currentType, meshTypes, 6)) {
+        mc.meshType = static_cast<MeshType>(currentType);
+      }
+
+      if (mc.meshType == MeshType::Custom) {
+        char pathBuf[512];
+        std::strncpy(pathBuf, mc.modelPath.c_str(), sizeof(pathBuf));
+        pathBuf[sizeof(pathBuf) - 1] = '\0';
+        if (ImGui::InputText("Model Path", pathBuf, sizeof(pathBuf))) {
+          mc.modelPath = pathBuf;
+        }
+        if (ImGui::BeginDragDropTarget()) {
+          if (const ImGuiPayload *payload =
+                  ImGui::AcceptDragDropPayload(AssetBrowserPanel::PAYLOAD_MESH)) {
+            mc.modelPath = std::string(static_cast<const char *>(payload->Data));
+          }
+          if (const ImGuiPayload *payload =
+                  ImGui::AcceptDragDropPayload(AssetBrowserPanel::PAYLOAD_ASSET)) {
+            mc.modelPath = std::string(static_cast<const char *>(payload->Data));
+          }
+          ImGui::EndDragDropTarget();
+        }
+      }
+
+      ImGui::Checkbox("Cast Shadows", &mc.castShadows);
+      ImGui::Checkbox("Receive Shadows", &mc.receiveShadows);
+
+      ImGui::TreePop();
+    }
+
+    if (removeMesh) {
+      world.RemoveComponent<MeshComponent>(entity);
+    }
+  }
+
+  // MaterialComponent
+  if (world.HasComponent<MaterialComponent>(entity)) {
+    ImGuiTreeNodeFlags flags =
+        ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed |
+        ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap;
+
+    bool removeMat = false;
+    bool open = ImGui::TreeNodeEx((void *)typeid(MaterialComponent).hash_code(),
+                                  flags, "Material");
+    ImGui::SameLine(ImGui::GetWindowWidth() - 25);
+    if (ImGui::Button("X##mat", ImVec2(20, 20))) {
+      removeMat = true;
+    }
+
+    if (open) {
+      auto &mat = world.GetComponent<MaterialComponent>(entity);
+
+      ImGui::ColorEdit3("Albedo", glm::value_ptr(mat.albedo));
+      ImGui::SliderFloat("Metallic", &mat.metallic, 0.0f, 1.0f);
+      ImGui::SliderFloat("Roughness", &mat.roughness, 0.0f, 1.0f);
+      ImGui::SliderFloat("AO", &mat.ao, 0.0f, 1.0f);
+      ImGui::ColorEdit3("Emissive", glm::value_ptr(mat.emissive));
+
+      ImGui::Separator();
+      ImGui::Text("Textures");
+
+      auto drawTexturePath = [](const char *label, std::string &path) {
+        char buf[512];
+        std::strncpy(buf, path.c_str(), sizeof(buf));
+        buf[sizeof(buf) - 1] = '\0';
+        if (ImGui::InputText(label, buf, sizeof(buf))) {
+          path = buf;
+        }
+        if (ImGui::BeginDragDropTarget()) {
+          if (const ImGuiPayload *payload =
+                  ImGui::AcceptDragDropPayload(AssetBrowserPanel::PAYLOAD_TEXTURE)) {
+            path = std::string(static_cast<const char *>(payload->Data));
+          }
+          ImGui::EndDragDropTarget();
+        }
+      };
+
+      drawTexturePath("Albedo Map", mat.albedoTexturePath);
+      drawTexturePath("Normal Map", mat.normalTexturePath);
+      drawTexturePath("Metallic Map", mat.metallicTexturePath);
+      drawTexturePath("Roughness Map", mat.roughnessTexturePath);
+      drawTexturePath("AO Map", mat.aoTexturePath);
+
+      ImGui::TreePop();
+    }
+
+    if (removeMat) {
+      world.RemoveComponent<MaterialComponent>(entity);
+    }
+  }
+
+  // LightComponent
+  if (world.HasComponent<LightComponent>(entity)) {
+    ImGuiTreeNodeFlags flags =
+        ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed |
+        ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap;
+
+    bool removeLight = false;
+    bool open = ImGui::TreeNodeEx((void *)typeid(LightComponent).hash_code(),
+                                  flags, "Light");
+    ImGui::SameLine(ImGui::GetWindowWidth() - 25);
+    if (ImGui::Button("X##light", ImVec2(20, 20))) {
+      removeLight = true;
+    }
+
+    if (open) {
+      auto &lc = world.GetComponent<LightComponent>(entity);
+
+      const char *lightTypes[] = {"Directional", "Point", "Spot"};
+      ImGui::Combo("Type", &lc.type, lightTypes, 3);
+      ImGui::ColorEdit3("Color", glm::value_ptr(lc.color));
+      ImGui::DragFloat("Intensity", &lc.intensity, 0.1f, 0.0f, 100.0f);
+
+      if (lc.type == 1 || lc.type == 2) {
+        ImGui::DragFloat("Range", &lc.range, 0.5f, 0.0f, 1000.0f);
+      }
+      if (lc.type == 2) {
+        ImGui::SliderFloat("Inner Cone", &lc.innerConeAngle, 0.0f, 90.0f);
+        ImGui::SliderFloat("Outer Cone", &lc.outerConeAngle, 0.0f, 90.0f);
+      }
+
+      ImGui::Checkbox("Cast Shadows", &lc.castShadows);
+
+      ImGui::TreePop();
+    }
+
+    if (removeLight) {
+      world.RemoveComponent<LightComponent>(entity);
+    }
+  }
+
+  // CameraComponent
+  if (world.HasComponent<CameraComponent>(entity)) {
+    ImGuiTreeNodeFlags flags =
+        ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed |
+        ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap;
+
+    bool removeCam = false;
+    bool open = ImGui::TreeNodeEx((void *)typeid(CameraComponent).hash_code(),
+                                  flags, "Camera");
+    ImGui::SameLine(ImGui::GetWindowWidth() - 25);
+    if (ImGui::Button("X##cam", ImVec2(20, 20))) {
+      removeCam = true;
+    }
+
+    if (open) {
+      auto &cc = world.GetComponent<CameraComponent>(entity);
+
+      ImGui::Checkbox("Primary", &cc.isPrimary);
+      ImGui::SliderFloat("FOV", &cc.fov, 1.0f, 120.0f);
+      ImGui::DragFloat("Near Clip", &cc.nearClip, 0.01f, 0.001f, 10.0f);
+      ImGui::DragFloat("Far Clip", &cc.farClip, 1.0f, 1.0f, 100000.0f);
+
+      ImGui::TreePop();
+    }
+
+    if (removeCam) {
+      world.RemoveComponent<CameraComponent>(entity);
     }
   }
 }

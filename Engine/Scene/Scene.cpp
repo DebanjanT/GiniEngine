@@ -48,17 +48,45 @@ Entity Scene::DuplicateEntity(Entity entity) {
 
   Entity newEntity = CreateEntity(name);
 
-  // Copy transform
   if (m_World.HasComponent<TransformComponent>(entity)) {
     auto &src = m_World.GetComponent<TransformComponent>(entity);
     auto &dst = m_World.GetComponent<TransformComponent>(newEntity);
     dst = src;
   }
 
-  // Copy sprite
   if (m_World.HasComponent<SpriteComponent>(entity)) {
     auto &src = m_World.GetComponent<SpriteComponent>(entity);
     m_World.AddComponent<SpriteComponent>(newEntity, src);
+  }
+
+  if (m_World.HasComponent<MeshComponent>(entity)) {
+    auto &src = m_World.GetComponent<MeshComponent>(entity);
+    m_World.AddComponent<MeshComponent>(newEntity, src);
+  }
+
+  if (m_World.HasComponent<MaterialComponent>(entity)) {
+    auto &src = m_World.GetComponent<MaterialComponent>(entity);
+    m_World.AddComponent<MaterialComponent>(newEntity, src);
+  }
+
+  if (m_World.HasComponent<LightComponent>(entity)) {
+    auto &src = m_World.GetComponent<LightComponent>(entity);
+    m_World.AddComponent<LightComponent>(newEntity, src);
+  }
+
+  if (m_World.HasComponent<CameraComponent>(entity)) {
+    auto &src = m_World.GetComponent<CameraComponent>(entity);
+    m_World.AddComponent<CameraComponent>(newEntity, src);
+  }
+
+  if (m_World.HasComponent<SkyboxComponent>(entity)) {
+    auto &src = m_World.GetComponent<SkyboxComponent>(entity);
+    m_World.AddComponent<SkyboxComponent>(newEntity, src);
+  }
+
+  if (m_World.HasComponent<AnimatorComponent3D>(entity)) {
+    auto &src = m_World.GetComponent<AnimatorComponent3D>(entity);
+    m_World.AddComponent<AnimatorComponent3D>(newEntity, src);
   }
 
   return newEntity;

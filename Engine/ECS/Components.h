@@ -6,6 +6,10 @@
 #include <vector>
 
 namespace Gini {
+class Animator;
+}
+
+namespace Gini {
 
 // Core Components
 struct UUIDComponent {
@@ -175,6 +179,15 @@ struct SkyboxComponent {
   f32 intensity = 1.0f;
   f32 lod = 0.0f;
   bool useHDR = true;
+};
+
+// Animator Component for skeletal animation
+struct AnimatorComponent3D {
+  Ref<Animator> animator;
+  std::string animationPath;
+  bool playing = false;
+  f32 speed = 1.0f;
+  bool loop = true;
 };
 
 } // namespace Gini

@@ -22,6 +22,7 @@ public:
   static constexpr const char* PAYLOAD_ASSET = "ASSET_BROWSER_ITEM";
   static constexpr const char* PAYLOAD_TEXTURE = "ASSET_TEXTURE";
   static constexpr const char* PAYLOAD_MATERIAL = "ASSET_MATERIAL";
+  static constexpr const char* PAYLOAD_MESH = "ASSET_MESH";
 
 private:
   void DrawTopBar();

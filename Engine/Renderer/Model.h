@@ -15,6 +15,8 @@ struct aiMaterial;
 
 namespace Gini {
 
+struct BoneInfo;
+
 struct Material3D {
   std::string name;
 
@@ -72,12 +74,19 @@ public:
 
   const std::string &GetFilepath() const { return m_Filepath; }
   const std::string &GetDirectory() const { return m_Directory; }
+  bool HasBones() const { return !m_BoneInfoMap.empty(); }
+  const std::unordered_map<std::string, BoneInfo> &GetBoneInfoMap() const {
+    return m_BoneInfoMap;
+  }
+  i32 GetBoneCount() const { return m_BoneCounter; }
 
   static Ref<Model> Create(const std::string &filepath);
 
 private:
   void ProcessNode(const ::aiNode *node, const ::aiScene *scene);
   Ref<Mesh> ProcessMesh(const ::aiMesh *mesh, const ::aiScene *scene);
+  void ExtractBoneWeights(std::vector<SkinnedVertex3D> &vertices,
+                          const ::aiMesh *mesh);
   void LoadMaterialTextures(Material3D &material, const ::aiMaterial *aiMat);
 
   std::string m_Filepath;
@@ -88,6 +97,9 @@ private:
   std::vector<i32> m_MeshMaterialIndices;
 
   std::unordered_map<std::string, Ref<Texture2D>> m_TextureCache;
+
+  std::unordered_map<std::string, BoneInfo> m_BoneInfoMap;
+  i32 m_BoneCounter = 0;
 };
 
 } // namespace Gini

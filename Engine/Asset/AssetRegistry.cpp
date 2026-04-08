@@ -253,10 +253,10 @@ AssetRegistry::GetAssetTypeFromExtension(const std::string &extension) {
     return AssetType::Material;
   }
   if (ext == ".obj" || ext == ".fbx" || ext == ".gltf" || ext == ".glb" ||
-      ext == ".dae") {
+      ext == ".dae" || ext == ".gmesh") {
     return AssetType::Mesh;
   }
-  if (ext == ".giniscene" || ext == ".scene") {
+  if (ext == ".giniscene" || ext == ".scene" || ext == ".gscene") {
     return AssetType::Scene;
   }
   if (ext == ".wav" || ext == ".mp3" || ext == ".ogg" || ext == ".flac") {

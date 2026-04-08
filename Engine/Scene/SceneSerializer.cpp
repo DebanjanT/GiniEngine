@@ -1,6 +1,7 @@
 #include "SceneSerializer.h"
 #include "Core/Logger.h"
 #include "ECS/Components.h"
+#include "Renderer/ModelCache.h"
 
 #include <fstream>
 #include <sstream>
@@ -106,6 +107,8 @@ void SceneSerializer::SerializeEntity(void *emitterPtr, Entity entity) {
     out << YAML::Key << "MeshType" << YAML::Value
         << static_cast<int>(mc.meshType);
     out << YAML::Key << "ModelPath" << YAML::Value << mc.modelPath;
+    out << YAML::Key << "CastShadows" << YAML::Value << mc.castShadows;
+    out << YAML::Key << "ReceiveShadows" << YAML::Value << mc.receiveShadows;
     out << YAML::EndMap;
   }
 
@@ -123,6 +126,11 @@ void SceneSerializer::SerializeEntity(void *emitterPtr, Entity entity) {
         << mat.albedoTexturePath;
     out << YAML::Key << "NormalTexturePath" << YAML::Value
         << mat.normalTexturePath;
+    out << YAML::Key << "MetallicTexturePath" << YAML::Value
+        << mat.metallicTexturePath;
+    out << YAML::Key << "RoughnessTexturePath" << YAML::Value
+        << mat.roughnessTexturePath;
+    out << YAML::Key << "AOTexturePath" << YAML::Value << mat.aoTexturePath;
     out << YAML::EndMap;
   }
 
@@ -150,6 +158,30 @@ void SceneSerializer::SerializeEntity(void *emitterPtr, Entity entity) {
     out << YAML::Key << "FOV" << YAML::Value << cc.fov;
     out << YAML::Key << "NearClip" << YAML::Value << cc.nearClip;
     out << YAML::Key << "FarClip" << YAML::Value << cc.farClip;
+    out << YAML::EndMap;
+  }
+
+  // SkyboxComponent
+  if (world.HasComponent<SkyboxComponent>(entity)) {
+    out << YAML::Key << "SkyboxComponent";
+    out << YAML::BeginMap;
+    auto &sb = world.GetComponent<SkyboxComponent>(entity);
+    out << YAML::Key << "HDRPath" << YAML::Value << sb.hdrPath;
+    out << YAML::Key << "Intensity" << YAML::Value << sb.intensity;
+    out << YAML::Key << "LOD" << YAML::Value << sb.lod;
+    out << YAML::Key << "UseHDR" << YAML::Value << sb.useHDR;
+    out << YAML::EndMap;
+  }
+
+  // AnimatorComponent3D
+  if (world.HasComponent<AnimatorComponent3D>(entity)) {
+    out << YAML::Key << "AnimatorComponent3D";
+    out << YAML::BeginMap;
+    auto &ac = world.GetComponent<AnimatorComponent3D>(entity);
+    out << YAML::Key << "AnimationPath" << YAML::Value << ac.animationPath;
+    out << YAML::Key << "Playing" << YAML::Value << ac.playing;
+    out << YAML::Key << "Speed" << YAML::Value << ac.speed;
+    out << YAML::Key << "Loop" << YAML::Value << ac.loop;
     out << YAML::EndMap;
   }
 
@@ -273,6 +305,14 @@ bool SceneSerializer::DeserializeFromString(const std::string &yamlString) {
         mc.meshType =
             static_cast<MeshType>(meshComponent["MeshType"].as<int>());
         mc.modelPath = meshComponent["ModelPath"].as<std::string>();
+        if (meshComponent["CastShadows"])
+          mc.castShadows = meshComponent["CastShadows"].as<bool>();
+        if (meshComponent["ReceiveShadows"])
+          mc.receiveShadows = meshComponent["ReceiveShadows"].as<bool>();
+
+        if (mc.meshType == MeshType::Custom && !mc.modelPath.empty()) {
+          ModelCache::Get().Load(mc.modelPath);
+        }
       }
 
       // MaterialComponent
@@ -290,6 +330,15 @@ bool SceneSerializer::DeserializeFromString(const std::string &yamlString) {
         if (materialComponent["NormalTexturePath"])
           mat.normalTexturePath =
               materialComponent["NormalTexturePath"].as<std::string>();
+        if (materialComponent["MetallicTexturePath"])
+          mat.metallicTexturePath =
+              materialComponent["MetallicTexturePath"].as<std::string>();
+        if (materialComponent["RoughnessTexturePath"])
+          mat.roughnessTexturePath =
+              materialComponent["RoughnessTexturePath"].as<std::string>();
+        if (materialComponent["AOTexturePath"])
+          mat.aoTexturePath =
+              materialComponent["AOTexturePath"].as<std::string>();
       }
 
       // LightComponent
@@ -313,6 +362,35 @@ bool SceneSerializer::DeserializeFromString(const std::string &yamlString) {
         cc.fov = cameraComponent["FOV"].as<float>();
         cc.nearClip = cameraComponent["NearClip"].as<float>();
         cc.farClip = cameraComponent["FarClip"].as<float>();
+      }
+
+      // SkyboxComponent
+      auto skyboxComponent = entityNode["SkyboxComponent"];
+      if (skyboxComponent) {
+        auto &sb = world.AddComponent<SkyboxComponent>(entity);
+        if (skyboxComponent["HDRPath"])
+          sb.hdrPath = skyboxComponent["HDRPath"].as<std::string>();
+        if (skyboxComponent["Intensity"])
+          sb.intensity = skyboxComponent["Intensity"].as<float>();
+        if (skyboxComponent["LOD"])
+          sb.lod = skyboxComponent["LOD"].as<float>();
+        if (skyboxComponent["UseHDR"])
+          sb.useHDR = skyboxComponent["UseHDR"].as<bool>();
+      }
+
+      // AnimatorComponent3D
+      auto animatorComponent = entityNode["AnimatorComponent3D"];
+      if (animatorComponent) {
+        auto &ac = world.AddComponent<AnimatorComponent3D>(entity);
+        if (animatorComponent["AnimationPath"])
+          ac.animationPath =
+              animatorComponent["AnimationPath"].as<std::string>();
+        if (animatorComponent["Playing"])
+          ac.playing = animatorComponent["Playing"].as<bool>();
+        if (animatorComponent["Speed"])
+          ac.speed = animatorComponent["Speed"].as<float>();
+        if (animatorComponent["Loop"])
+          ac.loop = animatorComponent["Loop"].as<bool>();
       }
     }
   }

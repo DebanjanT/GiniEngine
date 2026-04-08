@@ -1,4 +1,5 @@
 #include "Model.h"
+#include "Animation/Animation.h"
 #include "Shader.h"
 #include "Core/Logger.h"
 
@@ -124,51 +125,8 @@ void Model::ProcessNode(const aiNode* node, const aiScene* scene) {
 }
 
 Ref<Mesh> Model::ProcessMesh(const aiMesh* mesh, const aiScene* scene) {
-    std::vector<Vertex3D> vertices;
     std::vector<u32> indices;
-    
-    vertices.reserve(mesh->mNumVertices);
-    
-    for (u32 i = 0; i < mesh->mNumVertices; i++) {
-        Vertex3D vertex;
-        
-        vertex.position = Vec3(
-            mesh->mVertices[i].x,
-            mesh->mVertices[i].y,
-            mesh->mVertices[i].z
-        );
-        
-        if (mesh->HasNormals()) {
-            vertex.normal = Vec3(
-                mesh->mNormals[i].x,
-                mesh->mNormals[i].y,
-                mesh->mNormals[i].z
-            );
-        }
-        
-        if (mesh->mTextureCoords[0]) {
-            vertex.texCoords = Vec2(
-                mesh->mTextureCoords[0][i].x,
-                mesh->mTextureCoords[0][i].y
-            );
-        }
-        
-        if (mesh->HasTangentsAndBitangents()) {
-            vertex.tangent = Vec3(
-                mesh->mTangents[i].x,
-                mesh->mTangents[i].y,
-                mesh->mTangents[i].z
-            );
-            vertex.bitangent = Vec3(
-                mesh->mBitangents[i].x,
-                mesh->mBitangents[i].y,
-                mesh->mBitangents[i].z
-            );
-        }
-        
-        vertices.push_back(vertex);
-    }
-    
+
     // Process indices
     for (u32 i = 0; i < mesh->mNumFaces; i++) {
         aiFace& face = mesh->mFaces[i];
@@ -176,8 +134,111 @@ Ref<Mesh> Model::ProcessMesh(const aiMesh* mesh, const aiScene* scene) {
             indices.push_back(face.mIndices[j]);
         }
     }
-    
+
+    bool hasBones = mesh->mNumBones > 0;
+
+    if (hasBones) {
+        std::vector<SkinnedVertex3D> vertices;
+        vertices.reserve(mesh->mNumVertices);
+
+        for (u32 i = 0; i < mesh->mNumVertices; i++) {
+            SkinnedVertex3D vertex;
+            vertex.position = Vec3(mesh->mVertices[i].x, mesh->mVertices[i].y,
+                                   mesh->mVertices[i].z);
+            if (mesh->HasNormals()) {
+                vertex.normal = Vec3(mesh->mNormals[i].x, mesh->mNormals[i].y,
+                                     mesh->mNormals[i].z);
+            }
+            if (mesh->mTextureCoords[0]) {
+                vertex.texCoords =
+                    Vec2(mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y);
+            }
+            if (mesh->HasTangentsAndBitangents()) {
+                vertex.tangent = Vec3(mesh->mTangents[i].x, mesh->mTangents[i].y,
+                                      mesh->mTangents[i].z);
+                vertex.bitangent = Vec3(mesh->mBitangents[i].x,
+                                        mesh->mBitangents[i].y,
+                                        mesh->mBitangents[i].z);
+            }
+            for (u32 b = 0; b < MAX_BONE_INFLUENCE; b++) {
+                vertex.boneIDs[b] = -1;
+                vertex.boneWeights[b] = 0.0f;
+            }
+            vertices.push_back(vertex);
+        }
+
+        ExtractBoneWeights(vertices, mesh);
+        return CreateRef<Mesh>(vertices, indices);
+    }
+
+    std::vector<Vertex3D> vertices;
+    vertices.reserve(mesh->mNumVertices);
+
+    for (u32 i = 0; i < mesh->mNumVertices; i++) {
+        Vertex3D vertex;
+        vertex.position = Vec3(mesh->mVertices[i].x, mesh->mVertices[i].y,
+                               mesh->mVertices[i].z);
+        if (mesh->HasNormals()) {
+            vertex.normal = Vec3(mesh->mNormals[i].x, mesh->mNormals[i].y,
+                                 mesh->mNormals[i].z);
+        }
+        if (mesh->mTextureCoords[0]) {
+            vertex.texCoords =
+                Vec2(mesh->mTextureCoords[0][i].x, mesh->mTextureCoords[0][i].y);
+        }
+        if (mesh->HasTangentsAndBitangents()) {
+            vertex.tangent = Vec3(mesh->mTangents[i].x, mesh->mTangents[i].y,
+                                  mesh->mTangents[i].z);
+            vertex.bitangent = Vec3(mesh->mBitangents[i].x,
+                                    mesh->mBitangents[i].y,
+                                    mesh->mBitangents[i].z);
+        }
+        vertices.push_back(vertex);
+    }
+
     return CreateRef<Mesh>(vertices, indices);
+}
+
+void Model::ExtractBoneWeights(std::vector<SkinnedVertex3D> &vertices,
+                               const aiMesh *mesh) {
+    for (u32 boneIdx = 0; boneIdx < mesh->mNumBones; boneIdx++) {
+        auto *bone = mesh->mBones[boneIdx];
+        std::string boneName = bone->mName.C_Str();
+        i32 boneID = -1;
+
+        auto it = m_BoneInfoMap.find(boneName);
+        if (it == m_BoneInfoMap.end()) {
+            BoneInfo info;
+            info.id = m_BoneCounter;
+            auto &m = bone->mOffsetMatrix;
+            info.offsetMatrix = Mat4(
+                m.a1, m.b1, m.c1, m.d1,
+                m.a2, m.b2, m.c2, m.d2,
+                m.a3, m.b3, m.c3, m.d3,
+                m.a4, m.b4, m.c4, m.d4
+            );
+            m_BoneInfoMap[boneName] = info;
+            boneID = m_BoneCounter;
+            m_BoneCounter++;
+        } else {
+            boneID = it->second.id;
+        }
+
+        for (u32 w = 0; w < bone->mNumWeights; w++) {
+            u32 vertexId = bone->mWeights[w].mVertexId;
+            f32 weight = bone->mWeights[w].mWeight;
+            if (vertexId >= vertices.size())
+                continue;
+            auto &vertex = vertices[vertexId];
+            for (u32 s = 0; s < MAX_BONE_INFLUENCE; s++) {
+                if (vertex.boneIDs[s] < 0) {
+                    vertex.boneIDs[s] = boneID;
+                    vertex.boneWeights[s] = weight;
+                    break;
+                }
+            }
+        }
+    }
 }
 
 void Model::LoadMaterialTextures(Material3D& material, const aiMaterial* aiMat) {

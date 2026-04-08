@@ -17,6 +17,11 @@ Mesh::Mesh(const std::vector<Vertex3D> &vertices,
   Create(vertices, indices);
 }
 
+Mesh::Mesh(const std::vector<SkinnedVertex3D> &vertices,
+           const std::vector<u32> &indices) {
+  CreateSkinned(vertices, indices);
+}
+
 Mesh::~Mesh() { Destroy(); }
 
 Mesh::Mesh(Mesh &&other) noexcept
@@ -85,6 +90,64 @@ void Mesh::Create(const std::vector<Vertex3D> &vertices,
   glEnableVertexAttribArray(4);
   glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D),
                         (void *)offsetof(Vertex3D, bitangent));
+
+  glBindVertexArray(0);
+}
+
+void Mesh::CreateSkinned(const std::vector<SkinnedVertex3D> &vertices,
+                         const std::vector<u32> &indices) {
+  m_Skinned = true;
+  m_VertexCount = static_cast<u32>(vertices.size());
+  m_IndexCount = static_cast<u32>(indices.size());
+
+  glGenVertexArrays(1, &m_VAO);
+  glGenBuffers(1, &m_VBO);
+  glGenBuffers(1, &m_EBO);
+
+  glBindVertexArray(m_VAO);
+
+  glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
+  glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(SkinnedVertex3D),
+               vertices.data(), GL_STATIC_DRAW);
+
+  glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_EBO);
+  glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(u32),
+               indices.data(), GL_STATIC_DRAW);
+
+  // Position
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex3D),
+                        (void *)offsetof(SkinnedVertex3D, position));
+
+  // Normal
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex3D),
+                        (void *)offsetof(SkinnedVertex3D, normal));
+
+  // TexCoords
+  glEnableVertexAttribArray(2);
+  glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex3D),
+                        (void *)offsetof(SkinnedVertex3D, texCoords));
+
+  // Tangent
+  glEnableVertexAttribArray(3);
+  glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex3D),
+                        (void *)offsetof(SkinnedVertex3D, tangent));
+
+  // Bitangent
+  glEnableVertexAttribArray(4);
+  glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex3D),
+                        (void *)offsetof(SkinnedVertex3D, bitangent));
+
+  // Bone IDs (ivec4 as integer attribs)
+  glEnableVertexAttribArray(5);
+  glVertexAttribIPointer(5, 4, GL_INT, sizeof(SkinnedVertex3D),
+                         (void *)offsetof(SkinnedVertex3D, boneIDs));
+
+  // Bone Weights
+  glEnableVertexAttribArray(6);
+  glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex3D),
+                        (void *)offsetof(SkinnedVertex3D, boneWeights));
 
   glBindVertexArray(0);
 }

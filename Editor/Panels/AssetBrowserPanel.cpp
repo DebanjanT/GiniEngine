@@ -324,6 +324,8 @@ void AssetBrowserPanel::DrawAssetItem(const AssetMetadata &asset) {
         payloadType = PAYLOAD_TEXTURE;
       else if (asset.type == AssetType::Material)
         payloadType = PAYLOAD_MATERIAL;
+      else if (asset.type == AssetType::Mesh)
+        payloadType = PAYLOAD_MESH;
 
       std::string pathStr = asset.absolutePath.string();
       ImGui::SetDragDropPayload(payloadType, pathStr.c_str(),
@@ -444,6 +446,8 @@ void AssetBrowserPanel::DrawAssetItem(const AssetMetadata &asset) {
         payloadType = PAYLOAD_TEXTURE;
       else if (asset.type == AssetType::Material)
         payloadType = PAYLOAD_MATERIAL;
+      else if (asset.type == AssetType::Mesh)
+        payloadType = PAYLOAD_MESH;
 
       std::string pathStr = asset.absolutePath.string();
       ImGui::SetDragDropPayload(payloadType, pathStr.c_str(),
@@ -467,7 +471,6 @@ void AssetBrowserPanel::DrawAssetItem(const AssetMetadata &asset) {
     std::string displayName = asset.name;
     float textWidth = ImGui::CalcTextSize(displayName.c_str()).x;
     if (textWidth > m_ThumbnailSize) {
-      // Truncate with ellipsis
       while (textWidth > m_ThumbnailSize - 20 && displayName.length() > 3) {
         displayName = displayName.substr(0, displayName.length() - 1);
         textWidth = ImGui::CalcTextSize((displayName + "...").c_str()).x;

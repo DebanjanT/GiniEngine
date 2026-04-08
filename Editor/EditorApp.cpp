@@ -1,21 +1,27 @@
 #include "EditorApp.h"
+#include "Animation/Animation.h"
 #include "ImGui/ImGuizmo.h"
 #include "Renderer/IBL.h"
 #include "Renderer/Light.h"
+#include "Renderer/ModelCache.h"
 #include "Renderer/PostProcess.h"
 #include "Renderer/Renderer3D.h"
 #include "Renderer/ShadowMap.h"
 #include "Renderer/SSAO.h"
+#include "Scene/SceneSerializer.h"
 #include "UI/ImGuiLayer.h"
+#include "Utils/FileDialog.h"
 
 #include <glad/gl.h>
 
+#include <filesystem>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <imgui.h>
 #include <imgui_impl_opengl3.h>
 #include <imgui_internal.h>
 #include <limits>
+#include <yaml-cpp/yaml.h>
 
 namespace Gini {
 
@@ -186,6 +192,37 @@ void EditorApp::OnRender() {
           if (m_Terrain) {
             depthShader->SetMat4("u_Model", glm::translate(Mat4(1.0f), m_Terrain->GetWorldPosition()));
           }
+
+          if (m_ActiveScene) {
+            auto &shadowWorld = m_ActiveScene->GetWorld();
+            auto shadowView = shadowWorld.GetRegistry().view<TransformComponent, MeshComponent>();
+            for (auto ent : shadowView) {
+              auto &mc = shadowView.get<MeshComponent>(ent);
+              if (!mc.castShadows) continue;
+              auto &tc = shadowView.get<TransformComponent>(ent);
+              Mat4 modelMat = tc.GetTransform();
+              depthShader->SetMat4("u_Model", modelMat);
+
+              if (mc.meshType == MeshType::Custom && !mc.modelPath.empty()) {
+                auto model = ModelCache::Get().Load(mc.modelPath);
+                if (model) {
+                  for (const auto &mesh : model->GetMeshes()) {
+                    mesh->Draw();
+                  }
+                }
+              } else {
+                Ref<Mesh> primMesh;
+                switch (mc.meshType) {
+                case MeshType::Cube: primMesh = Mesh::CreateCube(); break;
+                case MeshType::Sphere: primMesh = Mesh::CreateSphere(); break;
+                case MeshType::Plane: primMesh = Mesh::CreatePlane(); break;
+                case MeshType::Cylinder: primMesh = Mesh::CreateCylinder(); break;
+                default: break;
+                }
+                if (primMesh) primMesh->Draw();
+              }
+            }
+          }
         }
       }
       ShadowMap::EndShadowPass();
@@ -246,27 +283,85 @@ void EditorApp::OnRender() {
     Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(0, 0, 5),
                          Color(0.2f, 0.2f, 1.0f));
 
-    // Draw entities
+    // Draw entities using MeshComponent when available
     auto &world = m_ActiveScene->GetWorld();
     auto view = world.GetRegistry().view<TransformComponent>();
     int entityIndex = 0;
     for (auto entity : view) {
       auto &transform = view.get<TransformComponent>(entity);
+      Mat4 modelMatrix = transform.GetTransform();
 
-      Color cubeColor;
-      switch (entityIndex % 3) {
-      case 0:
-        cubeColor = Color(0.8f, 0.3f, 0.3f);
-        break;
-      case 1:
-        cubeColor = Color(0.3f, 0.8f, 0.3f);
-        break;
-      case 2:
-        cubeColor = Color(0.3f, 0.3f, 0.8f);
-        break;
+      if (world.HasComponent<MeshComponent>(entity)) {
+        auto &mc = world.GetComponent<MeshComponent>(entity);
+
+        Material3D mat3d;
+        if (world.HasComponent<MaterialComponent>(entity)) {
+          auto &matComp = world.GetComponent<MaterialComponent>(entity);
+          mat3d.albedo = matComp.albedo;
+          mat3d.metallic = matComp.metallic;
+          mat3d.roughness = matComp.roughness;
+          mat3d.ao = matComp.ao;
+          mat3d.emissive = matComp.emissive;
+          if (!matComp.albedoTexturePath.empty())
+            mat3d.albedoMap = Texture2D::Create(matComp.albedoTexturePath);
+          if (!matComp.normalTexturePath.empty())
+            mat3d.normalMap = Texture2D::Create(matComp.normalTexturePath);
+          if (!matComp.metallicTexturePath.empty())
+            mat3d.metallicMap = Texture2D::Create(matComp.metallicTexturePath);
+          if (!matComp.roughnessTexturePath.empty())
+            mat3d.roughnessMap = Texture2D::Create(matComp.roughnessTexturePath);
+          if (!matComp.aoTexturePath.empty())
+            mat3d.aoMap = Texture2D::Create(matComp.aoTexturePath);
+        }
+
+        switch (mc.meshType) {
+        case MeshType::Custom: {
+          if (!mc.modelPath.empty()) {
+            auto model = ModelCache::Get().Load(mc.modelPath);
+            if (model) {
+              if (world.HasComponent<AnimatorComponent3D>(entity)) {
+                auto &ac = world.GetComponent<AnimatorComponent3D>(entity);
+                if (ac.animator) {
+                  Renderer3D::DrawSkinnedModel(
+                      model, modelMatrix,
+                      ac.animator->GetFinalBoneMatrices());
+                } else {
+                  Renderer3D::DrawModel(model, modelMatrix);
+                }
+              } else {
+                Renderer3D::DrawModel(model, modelMatrix);
+              }
+            }
+          }
+          break;
+        }
+        case MeshType::Cube:
+          Renderer3D::DrawMesh(Mesh::CreateCube(), modelMatrix, mat3d);
+          break;
+        case MeshType::Sphere:
+          Renderer3D::DrawMesh(Mesh::CreateSphere(), modelMatrix, mat3d);
+          break;
+        case MeshType::Plane:
+          Renderer3D::DrawMesh(Mesh::CreatePlane(), modelMatrix, mat3d);
+          break;
+        case MeshType::Cylinder:
+          Renderer3D::DrawMesh(Mesh::CreateCylinder(), modelMatrix, mat3d);
+          break;
+        default: {
+          Color fallback(0.7f, 0.7f, 0.7f);
+          Renderer3D::DrawCube(transform.position, transform.scale, fallback);
+          break;
+        }
+        }
+      } else {
+        Color cubeColor;
+        switch (entityIndex % 3) {
+        case 0: cubeColor = Color(0.8f, 0.3f, 0.3f); break;
+        case 1: cubeColor = Color(0.3f, 0.8f, 0.3f); break;
+        case 2: cubeColor = Color(0.3f, 0.3f, 0.8f); break;
+        }
+        Renderer3D::DrawCube(transform.position, transform.scale, cubeColor);
       }
-
-      Renderer3D::DrawCube(transform.position, transform.scale, cubeColor);
 
       if (entity == m_SelectedEntity) {
         Vec3 halfSize = transform.scale * 0.55f;
@@ -360,6 +455,8 @@ void EditorApp::OnRender() {
     m_ScenePropertiesPanel.OnImGuiRender();
     m_WeatherPanel.OnImGuiRender();
     m_ThreadAnalysisPanel.OnImGuiRender();
+
+    m_ModelImportDialog.OnImGuiRender();
   }
 
   if (m_ShowDemoWindow) {
@@ -562,35 +659,80 @@ void EditorApp::DrawMenuBar() {
       ImGui::Separator();
       if (ImGui::BeginMenu("3D Object")) {
         if (ImGui::MenuItem("Cube")) {
-          if (m_ActiveScene) m_ActiveScene->CreateEntity("Cube");
+          if (m_ActiveScene) {
+            auto e = m_ActiveScene->CreateEntity("Cube");
+            auto &mc = m_ActiveScene->GetWorld().AddComponent<MeshComponent>(e);
+            mc.meshType = MeshType::Cube;
+            m_ActiveScene->GetWorld().AddComponent<MaterialComponent>(e);
+          }
         }
         if (ImGui::MenuItem("Sphere")) {
-          if (m_ActiveScene) m_ActiveScene->CreateEntity("Sphere");
+          if (m_ActiveScene) {
+            auto e = m_ActiveScene->CreateEntity("Sphere");
+            auto &mc = m_ActiveScene->GetWorld().AddComponent<MeshComponent>(e);
+            mc.meshType = MeshType::Sphere;
+            m_ActiveScene->GetWorld().AddComponent<MaterialComponent>(e);
+          }
         }
         if (ImGui::MenuItem("Plane")) {
-          if (m_ActiveScene) m_ActiveScene->CreateEntity("Plane");
+          if (m_ActiveScene) {
+            auto e = m_ActiveScene->CreateEntity("Plane");
+            auto &mc = m_ActiveScene->GetWorld().AddComponent<MeshComponent>(e);
+            mc.meshType = MeshType::Plane;
+            m_ActiveScene->GetWorld().AddComponent<MaterialComponent>(e);
+          }
+        }
+        if (ImGui::MenuItem("Cylinder")) {
+          if (m_ActiveScene) {
+            auto e = m_ActiveScene->CreateEntity("Cylinder");
+            auto &mc = m_ActiveScene->GetWorld().AddComponent<MeshComponent>(e);
+            mc.meshType = MeshType::Cylinder;
+            m_ActiveScene->GetWorld().AddComponent<MaterialComponent>(e);
+          }
         }
         ImGui::EndMenu();
       }
       if (ImGui::BeginMenu("Light")) {
         if (ImGui::MenuItem("Directional Light")) {
-          if (m_ActiveScene) m_ActiveScene->CreateEntity("Directional Light");
+          if (m_ActiveScene) {
+            auto e = m_ActiveScene->CreateEntity("Directional Light");
+            auto &lc = m_ActiveScene->GetWorld().AddComponent<LightComponent>(e);
+            lc.type = 0;
+          }
         }
         if (ImGui::MenuItem("Point Light")) {
-          if (m_ActiveScene) m_ActiveScene->CreateEntity("Point Light");
+          if (m_ActiveScene) {
+            auto e = m_ActiveScene->CreateEntity("Point Light");
+            auto &lc = m_ActiveScene->GetWorld().AddComponent<LightComponent>(e);
+            lc.type = 1;
+          }
         }
         if (ImGui::MenuItem("Spot Light")) {
-          if (m_ActiveScene) m_ActiveScene->CreateEntity("Spot Light");
+          if (m_ActiveScene) {
+            auto e = m_ActiveScene->CreateEntity("Spot Light");
+            auto &lc = m_ActiveScene->GetWorld().AddComponent<LightComponent>(e);
+            lc.type = 2;
+          }
         }
         ImGui::EndMenu();
       }
       if (ImGui::MenuItem("Camera")) {
-        if (m_ActiveScene) m_ActiveScene->CreateEntity("Camera");
+        if (m_ActiveScene) {
+          auto e = m_ActiveScene->CreateEntity("Camera");
+          m_ActiveScene->GetWorld().AddComponent<CameraComponent>(e);
+        }
       }
       ImGui::EndMenu();
     }
 
     if (ImGui::BeginMenu("Tools")) {
+      if (ImGui::MenuItem("Import Model...")) {
+        auto path = FileDialog::OpenFile({{"3D Models", "fbx,obj,gltf,glb,dae"}});
+        if (!path.empty()) {
+          m_ModelImportDialog.Open(path);
+        }
+      }
+      ImGui::Separator();
       if (ImGui::MenuItem("Terrain Editor"))
         m_TerrainEditorWindow.Open();
       if (ImGui::MenuItem("Material Editor"))
@@ -758,6 +900,67 @@ void EditorApp::DrawViewport() {
                ImVec2(m_ViewportSize.x, m_ViewportSize.y), ImVec2(0, 1),
                ImVec2(1, 0));
 
+  // Drag-drop target: accept mesh assets dragged from Asset Browser
+  if (ImGui::BeginDragDropTarget()) {
+    if (const ImGuiPayload *payload =
+            ImGui::AcceptDragDropPayload(AssetBrowserPanel::PAYLOAD_MESH)) {
+      std::string meshPath(static_cast<const char *>(payload->Data));
+      if (m_ActiveScene) {
+        std::filesystem::path p(meshPath);
+        std::string ext = p.extension().string();
+        for (auto &c : ext) c = static_cast<char>(std::tolower(c));
+
+        std::string modelFilePath = meshPath;
+        if (ext == ".gmesh") {
+          try {
+            YAML::Node gmesh = YAML::LoadFile(meshPath);
+            if (gmesh["SourceFile"]) {
+              modelFilePath =
+                  (p.parent_path() / gmesh["SourceFile"].as<std::string>())
+                      .string();
+            }
+          } catch (...) {}
+        }
+
+        std::string name = p.stem().string();
+        auto entity = m_ActiveScene->CreateEntity(name);
+        auto &mc =
+            m_ActiveScene->GetWorld().AddComponent<MeshComponent>(entity);
+        mc.meshType = MeshType::Custom;
+        mc.modelPath = modelFilePath;
+        m_ActiveScene->GetWorld().AddComponent<MaterialComponent>(entity);
+
+        m_SelectedEntity = entity;
+        m_PropertiesPanel.SetSelectedEntity(entity);
+        m_HierarchyPanel.SetSelectedEntity(entity);
+      }
+    }
+    if (const ImGuiPayload *payload =
+            ImGui::AcceptDragDropPayload(AssetBrowserPanel::PAYLOAD_ASSET)) {
+      std::string assetPath(static_cast<const char *>(payload->Data));
+      std::filesystem::path p(assetPath);
+      std::string ext = p.extension().string();
+      for (auto &c : ext) c = static_cast<char>(std::tolower(c));
+      if (ext == ".fbx" || ext == ".obj" || ext == ".gltf" || ext == ".glb" ||
+          ext == ".dae") {
+        if (m_ActiveScene) {
+          std::string name = p.stem().string();
+          auto entity = m_ActiveScene->CreateEntity(name);
+          auto &mc =
+              m_ActiveScene->GetWorld().AddComponent<MeshComponent>(entity);
+          mc.meshType = MeshType::Custom;
+          mc.modelPath = assetPath;
+          m_ActiveScene->GetWorld().AddComponent<MaterialComponent>(entity);
+
+          m_SelectedEntity = entity;
+          m_PropertiesPanel.SetSelectedEntity(entity);
+          m_HierarchyPanel.SetSelectedEntity(entity);
+        }
+      }
+    }
+    ImGui::EndDragDropTarget();
+  }
+
   // Store viewport bounds for mouse picking (after image is placed)
   m_ViewportBounds[0] = {imagePos.x, imagePos.y};
   m_ViewportBounds[1] = {imagePos.x + m_ViewportSize.x,
@@ -882,20 +1085,46 @@ void EditorApp::NewScene() {
 }
 
 void EditorApp::OpenScene() {
-  // TODO: File dialog
-  GINI_INFO("Open scene dialog");
-}
+  auto path = FileDialog::OpenFile({{"Gini Scene", "gscene"}});
+  if (path.empty())
+    return;
 
-void EditorApp::SaveScene() {
-  if (m_ActiveScene) {
-    // TODO: File dialog if no filepath
-    GINI_INFO("Save scene");
+  auto newScene = CreateRef<Scene>();
+  SceneSerializer serializer(newScene);
+  if (serializer.Deserialize(path)) {
+    m_ActiveScene = newScene;
+    m_EditorScene = newScene;
+    m_SelectedEntity = NullEntity;
+    m_HierarchyPanel.SetScene(m_ActiveScene);
+    m_PropertiesPanel.SetScene(m_ActiveScene);
+    m_PropertiesPanel.SetSelectedEntity(NullEntity);
+    m_HierarchyPanel.SetSelectedEntity(NullEntity);
+    GINI_INFO("Opened scene: ", path);
   }
 }
 
+void EditorApp::SaveScene() {
+  if (!m_ActiveScene)
+    return;
+
+  auto &filepath = m_ActiveScene->GetFilepath();
+  if (filepath.empty()) {
+    SaveSceneAs();
+    return;
+  }
+
+  SceneSerializer serializer(m_ActiveScene);
+  serializer.Serialize(filepath);
+}
+
 void EditorApp::SaveSceneAs() {
-  // TODO: File dialog
-  GINI_INFO("Save scene as dialog");
+  auto path = FileDialog::SaveFile({{"Gini Scene", "gscene"}}, "scene.gscene");
+  if (path.empty())
+    return;
+
+  SceneSerializer serializer(m_ActiveScene);
+  serializer.Serialize(path);
+  GINI_INFO("Scene saved as: ", path);
 }
 
 void EditorApp::OnProjectLoaded() {

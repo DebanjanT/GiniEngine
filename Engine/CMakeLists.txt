@@ -91,6 +91,9 @@ set(ENGINE_SOURCES
 
     # SSAO
     Renderer/SSAO.cpp
+
+    # Model Cache
+    Renderer/ModelCache.cpp
 )
 
 set(ENGINE_HEADERS

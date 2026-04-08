@@ -72,8 +72,13 @@ public:
                              const Color &color);
   static void DrawGrid(f32 size, u32 divisions, const Color &color);
 
+  // Skinned model drawing
+  static void DrawSkinnedModel(const Ref<Model> &model, const Mat4 &transform,
+                               const std::vector<Mat4> &boneMatrices);
+
   // Shaders
   static Ref<Shader> GetPBRShader();
+  static Ref<Shader> GetSkinnedPBRShader();
   static Ref<Shader> GetBasicShader();
   static Ref<Shader> GetSkyboxShader();
 

@@ -3,6 +3,8 @@
 #include "Renderer/ShadowMap.h"
 #include "Core/Logger.h"
 
+#include <algorithm>
+
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 #include <glad/gl.h>
@@ -12,6 +14,7 @@ namespace Gini {
 
 struct Renderer3DData {
   Ref<Shader> pbrShader;
+  Ref<Shader> skinnedPBRShader;
   Ref<Shader> basicShader;
   Ref<Shader> skyboxShader;
   Ref<Shader> lineShader;
@@ -521,6 +524,63 @@ void main() {
 }
 )";
 
+// Skinned PBR vertex shader (adds bone transform)
+static const char *s_SkinnedPBRVertexShader = R"(
+#version 410 core
+layout (location = 0) in vec3 a_Position;
+layout (location = 1) in vec3 a_Normal;
+layout (location = 2) in vec2 a_TexCoords;
+layout (location = 3) in vec3 a_Tangent;
+layout (location = 4) in vec3 a_Bitangent;
+layout (location = 5) in ivec4 a_BoneIDs;
+layout (location = 6) in vec4 a_BoneWeights;
+
+out vec3 v_WorldPos;
+out vec3 v_Normal;
+out vec2 v_TexCoords;
+out mat3 v_TBN;
+out vec3 v_TangentViewDir;
+
+uniform mat4 u_Model;
+uniform mat4 u_View;
+uniform mat4 u_Projection;
+uniform mat3 u_NormalMatrix;
+uniform vec3 u_CameraPos;
+
+const int MAX_BONES = 100;
+uniform mat4 u_BoneMatrices[MAX_BONES];
+uniform int u_HasBones;
+
+void main() {
+    mat4 boneTransform = mat4(1.0);
+    if (u_HasBones == 1) {
+        boneTransform = mat4(0.0);
+        for (int i = 0; i < 4; i++) {
+            if (a_BoneIDs[i] >= 0 && a_BoneIDs[i] < MAX_BONES) {
+                boneTransform += u_BoneMatrices[a_BoneIDs[i]] * a_BoneWeights[i];
+            }
+        }
+    }
+
+    vec4 localPos = boneTransform * vec4(a_Position, 1.0);
+    v_WorldPos = vec3(u_Model * localPos);
+
+    mat3 boneMat3 = mat3(boneTransform);
+    v_Normal = u_NormalMatrix * (boneMat3 * a_Normal);
+    v_TexCoords = a_TexCoords;
+
+    vec3 T = normalize(u_NormalMatrix * (boneMat3 * a_Tangent));
+    vec3 B = normalize(u_NormalMatrix * (boneMat3 * a_Bitangent));
+    vec3 N = normalize(v_Normal);
+    v_TBN = mat3(T, B, N);
+
+    mat3 TBN_inv = transpose(v_TBN);
+    v_TangentViewDir = TBN_inv * (u_CameraPos - v_WorldPos);
+
+    gl_Position = u_Projection * u_View * vec4(v_WorldPos, 1.0);
+}
+)";
+
 void Renderer3D::Init() {
   s_Data = new Renderer3DData();
 
@@ -551,6 +611,8 @@ void Renderer3D::Shutdown() {
 
 void Renderer3D::InitShaders() {
   s_Data->pbrShader = Shader::Create(s_PBRVertexShader, s_PBRFragmentShader);
+  s_Data->skinnedPBRShader =
+      Shader::Create(s_SkinnedPBRVertexShader, s_PBRFragmentShader);
   s_Data->basicShader =
       Shader::Create(s_BasicVertexShader, s_BasicFragmentShader);
   s_Data->lineShader = Shader::Create(s_LineVertexShader, s_LineFragmentShader);
@@ -800,7 +862,93 @@ void Renderer3D::DrawPlane(const Vec3 &position, const Vec2 &size,
   DrawMesh(s_Data->planeMesh, transform, color);
 }
 
+void Renderer3D::DrawSkinnedModel(const Ref<Model> &model,
+                                  const Mat4 &transform,
+                                  const std::vector<Mat4> &boneMatrices) {
+  if (!model)
+    return;
+
+  const auto &meshes = model->GetMeshes();
+  const auto &materials = model->GetMaterials();
+  const auto &materialIndices = model->GetMeshMaterialIndices();
+
+  auto shader = s_Data->skinnedPBRShader;
+  shader->Bind();
+  shader->SetMat4("u_Model", transform);
+  shader->SetMat4("u_View", s_Data->viewMatrix);
+  shader->SetMat4("u_Projection", s_Data->projectionMatrix);
+  shader->SetMat3("u_NormalMatrix",
+                   glm::transpose(glm::inverse(Mat3(transform))));
+  shader->SetVec3("u_CameraPos", s_Data->cameraPosition);
+
+  if (!boneMatrices.empty()) {
+    shader->SetInt("u_HasBones", 1);
+    u32 count =
+        static_cast<u32>(std::min(boneMatrices.size(), size_t(100)));
+    for (u32 i = 0; i < count; i++) {
+      std::string uniformName = "u_BoneMatrices[" + std::to_string(i) + "]";
+      shader->SetMat4(uniformName, boneMatrices[i]);
+    }
+  } else {
+    shader->SetInt("u_HasBones", 0);
+  }
+
+  LightManager::Get().UploadToShader(shader.get());
+  IBL::BindIBLTextures(shader.get(), 10);
+  if (ShadowMap::IsInitialized()) {
+    ShadowMap::BindShadowMaps(shader.get(), 13);
+  } else {
+    shader->SetInt("u_HasShadows", 0);
+  }
+
+  for (u32 i = 0; i < meshes.size(); i++) {
+    Material3D mat;
+    if (i < materialIndices.size() && materialIndices[i] >= 0 &&
+        materialIndices[i] < static_cast<i32>(materials.size())) {
+      mat = materials[materialIndices[i]];
+    }
+
+    shader->SetVec3("u_Material_albedo", mat.albedo);
+    shader->SetFloat("u_Material_metallic", mat.metallic);
+    shader->SetFloat("u_Material_roughness", mat.roughness);
+    shader->SetFloat("u_Material_ao", mat.ao);
+    shader->SetVec3("u_Material_emissive", mat.emissive);
+
+    u32 texUnit = 0;
+    auto bindTex = [&](Ref<Texture2D> &tex, const char *mapUniform,
+                       const char *hasUniform) {
+      if (tex) {
+        tex->Bind(texUnit);
+        shader->SetInt(mapUniform, texUnit++);
+        shader->SetInt(hasUniform, 1);
+      } else {
+        shader->SetInt(hasUniform, 0);
+      }
+    };
+    bindTex(mat.albedoMap, "u_AlbedoMap", "u_HasAlbedoMap");
+    bindTex(mat.normalMap, "u_NormalMap", "u_HasNormalMap");
+    bindTex(mat.metallicMap, "u_MetallicMap", "u_HasMetallicMap");
+    bindTex(mat.roughnessMap, "u_RoughnessMap", "u_HasRoughnessMap");
+    bindTex(mat.aoMap, "u_AOMap", "u_HasAOMap");
+    bindTex(mat.heightMap, "u_HeightMap", "u_HasHeightMap");
+    if (!mat.heightMap) {
+      shader->SetInt("u_HasHeightMap", 0);
+    }
+
+    meshes[i]->Draw();
+
+    s_Data->stats.drawCalls++;
+    s_Data->stats.triangles += meshes[i]->GetIndexCount() / 3;
+    s_Data->stats.vertices += meshes[i]->GetVertexCount();
+    s_Data->stats.meshesDrawn++;
+  }
+}
+
 Ref<Shader> Renderer3D::GetPBRShader() { return s_Data->pbrShader; }
+
+Ref<Shader> Renderer3D::GetSkinnedPBRShader() {
+  return s_Data->skinnedPBRShader;
+}
 
 Ref<Shader> Renderer3D::GetBasicShader() { return s_Data->basicShader; }
 

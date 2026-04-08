@@ -42,8 +42,15 @@ public:
 
   static Ref<Texture2D> Create(u32 width, u32 height);
   static Ref<Texture2D> Create(const std::string &path);
+  /// Embedded images (e.g. GLB): PNG/JPEG bytes in memory (stb_image).
+  static Ref<Texture2D> CreateFromMemory(const unsigned char *data, size_t length);
+  /// Uncompressed ARGB8888 from Assimp embedded texture (aiTexel BGRA layout).
+  static Ref<Texture2D> CreateFromBGRA(const unsigned char *bgra, u32 width,
+                                      u32 height);
 
 private:
+  Texture2D(unsigned char *stbiData, int width, int height, int channels);
+  Texture2D(const unsigned char *bgra, u32 width, u32 height);
   u32 m_RendererID = 0;
   u32 m_Width = 0;
   u32 m_Height = 0;

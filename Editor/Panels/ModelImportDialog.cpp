@@ -6,11 +6,77 @@
 #include <assimp/postprocess.h>
 #include <assimp/scene.h>
 
+#include <cstdlib>
 #include <fstream>
 #include <imgui.h>
+#include <stb_image.h>
+#include <stb_image_write.h>
+#include <vector>
 #include <yaml-cpp/yaml.h>
 
 namespace Gini {
+
+namespace {
+
+bool WriteAiTextureToPng(const aiTexture *t, const std::string &outPath) {
+  if (!t || !t->pcData)
+    return false;
+
+  if (t->mHeight == 0) {
+    int w = 0, h = 0, ch = 0;
+    unsigned char *data = stbi_load_from_memory(
+        reinterpret_cast<const stbi_uc *>(t->pcData),
+        static_cast<int>(t->mWidth), &w, &h, &ch, 0);
+    if (!data)
+      return false;
+    int stride = w * ch;
+    int ok = stbi_write_png(outPath.c_str(), w, h, ch, data, stride);
+    stbi_image_free(data);
+    return ok != 0;
+  }
+
+  const unsigned w = t->mWidth;
+  const unsigned h = t->mHeight;
+  std::vector<unsigned char> rgba(static_cast<size_t>(w) * h * 4);
+  const unsigned char *bgra =
+      reinterpret_cast<const unsigned char *>(t->pcData);
+  for (unsigned i = 0; i < w * h; i++) {
+    rgba[i * 4 + 0] = bgra[i * 4 + 2];
+    rgba[i * 4 + 1] = bgra[i * 4 + 1];
+    rgba[i * 4 + 2] = bgra[i * 4 + 0];
+    rgba[i * 4 + 3] = bgra[i * 4 + 3];
+  }
+  return stbi_write_png(outPath.c_str(), static_cast<int>(w), static_cast<int>(h),
+                        4, rgba.data(), static_cast<int>(w * 4)) != 0;
+}
+
+void ExtractEmbeddedTexturesToFolder(const std::filesystem::path &modelFilePath,
+                                     const std::filesystem::path &texDir) {
+  Assimp::Importer importer;
+  const aiScene *scene = importer.ReadFile(
+      modelFilePath.string(),
+      aiProcess_Triangulate | aiProcess_GenSmoothNormals |
+          aiProcess_FlipUVs | aiProcess_CalcTangentSpace |
+          aiProcess_JoinIdenticalVertices);
+
+  if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+    GINI_ERROR("ExtractEmbeddedTextures: Assimp failed: ",
+               importer.GetErrorString());
+    return;
+  }
+
+  for (unsigned i = 0; i < scene->mNumTextures; i++) {
+    std::string out =
+        (texDir / ("embedded_" + std::to_string(i) + ".png")).string();
+    if (WriteAiTextureToPng(scene->mTextures[i], out)) {
+      GINI_INFO("Extracted embedded texture: ", out);
+    } else {
+      GINI_ERROR("Failed to extract embedded texture index ", i);
+    }
+  }
+}
+
+} // namespace
 
 static std::string StemFromPath(const std::string &path) {
   std::filesystem::path p(path);
@@ -232,7 +298,13 @@ void ModelImportDialog::DrawTexturesTab() {
     ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "None found");
   } else {
     for (auto &tex : m_Preview.textureFiles) {
-      ImGui::BulletText("%s", tex.c_str());
+      if (!tex.empty() && tex[0] == '*') {
+        int idx = std::atoi(tex.c_str() + 1);
+        ImGui::BulletText("Embedded #%d (inside model file) -> embedded_%d.png",
+                          idx, idx);
+      } else {
+        ImGui::BulletText("%s", tex.c_str());
+      }
     }
   }
 }
@@ -265,15 +337,18 @@ bool ModelImportDialog::PerformImport() {
     return false;
   }
 
-  if (m_Settings.importTextures && !m_Preview.textureFiles.empty()) {
+  if (m_Settings.importTextures) {
     std::filesystem::path texDir = destDir / "Textures";
     std::filesystem::create_directories(texDir, ec);
 
     std::filesystem::path srcDir = srcPath.parent_path();
     for (auto &texRelPath : m_Preview.textureFiles) {
+      if (!texRelPath.empty() && texRelPath[0] == '*')
+        continue;
       std::filesystem::path texSrc = srcDir / texRelPath;
       if (std::filesystem::exists(texSrc, ec)) {
-        std::filesystem::path texDest = texDir / std::filesystem::path(texRelPath).filename();
+        std::filesystem::path texDest =
+            texDir / std::filesystem::path(texRelPath).filename();
         std::filesystem::copy_file(
             texSrc, texDest,
             std::filesystem::copy_options::overwrite_existing, ec);
@@ -283,6 +358,8 @@ bool ModelImportDialog::PerformImport() {
         }
       }
     }
+
+    ExtractEmbeddedTexturesToFolder(destModelFile, texDir);
   }
 
   if (!GenerateGMeshManifest(destDir)) {
@@ -355,7 +432,12 @@ bool ModelImportDialog::GenerateGMeshManifest(
 
   out << YAML::Key << "Textures" << YAML::Value << YAML::BeginSeq;
   for (auto &tex : m_Preview.textureFiles) {
-    out << std::filesystem::path(tex).filename().string();
+    if (!tex.empty() && tex[0] == '*') {
+      int idx = std::atoi(tex.c_str() + 1);
+      out << ("embedded_" + std::to_string(idx) + ".png");
+    } else {
+      out << std::filesystem::path(tex).filename().string();
+    }
   }
   out << YAML::EndSeq;
 

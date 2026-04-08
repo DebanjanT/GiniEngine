@@ -74,6 +74,97 @@ Texture2D::Texture2D(const std::string &path) : m_Path(path) {
              " channels)");
 }
 
+Texture2D::Texture2D(unsigned char *data, int width, int height, int channels)
+    : m_Width(static_cast<u32>(width)), m_Height(static_cast<u32>(height)),
+      m_Path("<embedded>") {
+  if (!data || channels < 1 || channels > 4) {
+    if (data)
+      stbi_image_free(data);
+    GINI_ERROR("Texture2D: invalid embedded image data");
+    return;
+  }
+
+  if (channels == 4) {
+    m_InternalFormat = GL_RGBA8;
+    m_DataFormat = GL_RGBA;
+  } else if (channels == 3) {
+    m_InternalFormat = GL_RGB8;
+    m_DataFormat = GL_RGB;
+  } else {
+    m_InternalFormat = GL_R8;
+    m_DataFormat = GL_RED;
+  }
+
+  glGenTextures(1, &m_RendererID);
+  glBindTexture(GL_TEXTURE_2D, m_RendererID);
+
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                  GL_LINEAR_MIPMAP_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+  GLfloat maxAniso = 1.0f;
+  glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &maxAniso);
+  if (maxAniso > 1.0f)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY,
+                    std::min(maxAniso, 16.0f));
+
+  glTexImage2D(GL_TEXTURE_2D, 0, m_InternalFormat, width, height, 0,
+               m_DataFormat, GL_UNSIGNED_BYTE, data);
+  glGenerateMipmap(GL_TEXTURE_2D);
+
+  stbi_image_free(data);
+}
+
+Texture2D::Texture2D(const unsigned char *bgra, u32 width, u32 height)
+    : m_Width(width), m_Height(height), m_Path("<embedded-bgra>") {
+  m_InternalFormat = GL_RGBA8;
+  m_DataFormat = GL_BGRA;
+
+  glGenTextures(1, &m_RendererID);
+  glBindTexture(GL_TEXTURE_2D, m_RendererID);
+
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
+                  GL_LINEAR_MIPMAP_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+  GLfloat maxAniso = 1.0f;
+  glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &maxAniso);
+  if (maxAniso > 1.0f)
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY,
+                    std::min(maxAniso, 16.0f));
+
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, static_cast<i32>(width),
+               static_cast<i32>(height), 0, GL_BGRA, GL_UNSIGNED_BYTE, bgra);
+  glGenerateMipmap(GL_TEXTURE_2D);
+}
+
+Ref<Texture2D> Texture2D::CreateFromMemory(const unsigned char *buffer,
+                                           size_t length) {
+  if (!buffer || length == 0)
+    return nullptr;
+
+  int width, height, channels;
+  stbi_set_flip_vertically_on_load(1);
+  unsigned char *data = stbi_load_from_memory(
+      buffer, static_cast<int>(length), &width, &height, &channels, 0);
+  if (!data) {
+    GINI_ERROR("CreateFromMemory: stbi could not decode embedded image");
+    return nullptr;
+  }
+  return Ref<Texture2D>(new Texture2D(data, width, height, channels));
+}
+
+Ref<Texture2D> Texture2D::CreateFromBGRA(const unsigned char *bgra, u32 width,
+                                         u32 height) {
+  if (!bgra || width == 0 || height == 0)
+    return nullptr;
+  return Ref<Texture2D>(new Texture2D(bgra, width, height));
+}
+
 Texture2D::~Texture2D() { glDeleteTextures(1, &m_RendererID); }
 
 void Texture2D::SetData(void *data, u32 size) {

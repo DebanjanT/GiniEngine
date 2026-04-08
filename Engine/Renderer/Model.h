@@ -87,7 +87,8 @@ private:
   Ref<Mesh> ProcessMesh(const ::aiMesh *mesh, const ::aiScene *scene);
   void ExtractBoneWeights(std::vector<SkinnedVertex3D> &vertices,
                           const ::aiMesh *mesh);
-  void LoadMaterialTextures(Material3D &material, const ::aiMaterial *aiMat);
+  void LoadMaterialTextures(Material3D &material, const ::aiMaterial *aiMat,
+                            const ::aiScene *scene);
 
   std::string m_Filepath;
   std::string m_Directory;

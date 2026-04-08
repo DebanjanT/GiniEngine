@@ -14,6 +14,7 @@ struct Vertex3D {
   Vec2 texCoords;
   Vec3 tangent;
   Vec3 bitangent;
+  Vec4 color = Vec4(1.0f);
 };
 
 struct SkinnedVertex3D {
@@ -22,6 +23,7 @@ struct SkinnedVertex3D {
   Vec2 texCoords;
   Vec3 tangent;
   Vec3 bitangent;
+  Vec4 color = Vec4(1.0f);
   i32 boneIDs[MAX_BONE_INFLUENCE] = {-1, -1, -1, -1};
   f32 boneWeights[MAX_BONE_INFLUENCE] = {0.0f, 0.0f, 0.0f, 0.0f};
 };

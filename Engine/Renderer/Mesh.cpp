@@ -91,6 +91,11 @@ void Mesh::Create(const std::vector<Vertex3D> &vertices,
   glVertexAttribPointer(4, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D),
                         (void *)offsetof(Vertex3D, bitangent));
 
+  // Vertex color
+  glEnableVertexAttribArray(7);
+  glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex3D),
+                        (void *)offsetof(Vertex3D, color));
+
   glBindVertexArray(0);
 }
 
@@ -148,6 +153,11 @@ void Mesh::CreateSkinned(const std::vector<SkinnedVertex3D> &vertices,
   glEnableVertexAttribArray(6);
   glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex3D),
                         (void *)offsetof(SkinnedVertex3D, boneWeights));
+
+  // Vertex color
+  glEnableVertexAttribArray(7);
+  glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, sizeof(SkinnedVertex3D),
+                        (void *)offsetof(SkinnedVertex3D, color));
 
   glBindVertexArray(0);
 }

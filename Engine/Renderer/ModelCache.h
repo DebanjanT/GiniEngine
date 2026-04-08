@@ -2,6 +2,7 @@
 
 #include "Core/Types.h"
 #include "Renderer/Model.h"
+#include <filesystem>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -26,6 +27,8 @@ private:
 
   mutable std::mutex m_Mutex;
   std::unordered_map<std::string, Ref<Model>> m_Cache;
+  std::unordered_map<std::string, std::filesystem::file_time_type>
+      m_FileWriteTimes;
 };
 
 } // namespace Gini

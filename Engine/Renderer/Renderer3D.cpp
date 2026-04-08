@@ -1,7 +1,7 @@
 #include "Renderer3D.h"
+#include "Core/Logger.h"
 #include "Renderer/IBL.h"
 #include "Renderer/ShadowMap.h"
-#include "Core/Logger.h"
 
 #include <algorithm>
 
@@ -42,12 +42,14 @@ layout (location = 1) in vec3 a_Normal;
 layout (location = 2) in vec2 a_TexCoords;
 layout (location = 3) in vec3 a_Tangent;
 layout (location = 4) in vec3 a_Bitangent;
+layout (location = 7) in vec4 a_Color;
 
 out vec3 v_WorldPos;
 out vec3 v_Normal;
 out vec2 v_TexCoords;
 out mat3 v_TBN;
 out vec3 v_TangentViewDir;
+out vec4 v_Color;
 
 uniform mat4 u_Model;
 uniform mat4 u_View;
@@ -59,6 +61,7 @@ void main() {
     v_WorldPos = vec3(u_Model * vec4(a_Position, 1.0));
     v_Normal = u_NormalMatrix * a_Normal;
     v_TexCoords = a_TexCoords;
+    v_Color = a_Color;
     
     vec3 T = normalize(u_NormalMatrix * a_Tangent);
     vec3 B = normalize(u_NormalMatrix * a_Bitangent);
@@ -83,6 +86,7 @@ in vec3 v_Normal;
 in vec2 v_TexCoords;
 in mat3 v_TBN;
 in vec3 v_TangentViewDir;
+in vec4 v_Color;
 
 // Material
 uniform vec3 u_Material_albedo;
@@ -106,6 +110,7 @@ uniform int u_HasRoughnessMap;
 uniform int u_HasAOMap;
 uniform int u_HasHeightMap;
 uniform float u_HeightScale;
+uniform int u_UsePackedMetalRough;
 
 // Lights
 struct AmbientLight {
@@ -252,7 +257,8 @@ vec2 ParallaxMapping(vec2 texCoords, vec3 viewDir) {
 
     float layerDepth = 1.0 / numLayers;
     float currentLayerDepth = 0.0;
-    vec2 P = viewDir.xy / viewDir.z * u_HeightScale;
+    float vz = max(abs(viewDir.z), 0.05);
+    vec2 P = viewDir.xy / vz * u_HeightScale;
     vec2 deltaTexCoords = P / numLayers;
 
     vec2 currentTexCoords = texCoords;
@@ -270,7 +276,8 @@ vec2 ParallaxMapping(vec2 texCoords, vec3 viewDir) {
     float afterDepth  = currentDepthMapValue - currentLayerDepth;
     float beforeDepth = texture(u_HeightMap, prevTexCoords).r
                         - currentLayerDepth + layerDepth;
-    float weight = afterDepth / (afterDepth - beforeDepth);
+    float denom = afterDepth - beforeDepth;
+    float weight = abs(denom) > 1e-5 ? (afterDepth / denom) : 0.0;
     return prevTexCoords * weight + currentTexCoords * (1.0 - weight);
 }
 
@@ -280,10 +287,8 @@ void main() {
     if (u_HasHeightMap == 1) {
         vec3 tangentViewDir = normalize(v_TangentViewDir);
         texCoords = ParallaxMapping(v_TexCoords, tangentViewDir);
-        // Discard fragments outside [0,1] to avoid edge artifacts
-        if (texCoords.x > 1.0 || texCoords.y > 1.0 ||
-            texCoords.x < 0.0 || texCoords.y < 0.0)
-            discard;
+        // Avoid fragment discard speckle artifacts when sampled coords drift.
+        texCoords = clamp(texCoords, vec2(0.0), vec2(1.0));
     }
 
     // Get material properties
@@ -293,17 +298,30 @@ void main() {
     float ao = u_Material_ao;
     
     if (u_HasAlbedoMap == 1) {
-        albedo = pow(texture(u_AlbedoMap, texCoords).rgb, vec3(2.2));
+        albedo *= pow(texture(u_AlbedoMap, texCoords).rgb, vec3(2.2));
+    } else {
+        // Many FBX assets rely on vertex colors when no albedo map exists.
+        albedo *= v_Color.rgb;
     }
-    if (u_HasMetallicMap == 1) {
-        metallic = texture(u_MetallicMap, texCoords).r;
-    }
-    if (u_HasRoughnessMap == 1) {
-        roughness = texture(u_RoughnessMap, texCoords).r;
+    if (u_HasMetallicMap == 1 && u_HasRoughnessMap == 1 && u_UsePackedMetalRough == 1) {
+        // glTF metallicRoughness packed texture: G=roughness, B=metallic
+        vec4 mr = texture(u_RoughnessMap, texCoords);
+        roughness = mr.g;
+        metallic = mr.b;
+    } else {
+        if (u_HasMetallicMap == 1) {
+            metallic = texture(u_MetallicMap, texCoords).r;
+        }
+        if (u_HasRoughnessMap == 1) {
+            roughness = texture(u_RoughnessMap, texCoords).r;
+        }
     }
     if (u_HasAOMap == 1) {
         ao = texture(u_AOMap, texCoords).r;
     }
+
+    metallic = clamp(metallic, 0.0, 1.0);
+    roughness = clamp(roughness, 0.045, 1.0);
     
     // Normal mapping
     vec3 N = normalize(v_Normal);
@@ -534,12 +552,14 @@ layout (location = 3) in vec3 a_Tangent;
 layout (location = 4) in vec3 a_Bitangent;
 layout (location = 5) in ivec4 a_BoneIDs;
 layout (location = 6) in vec4 a_BoneWeights;
+layout (location = 7) in vec4 a_Color;
 
 out vec3 v_WorldPos;
 out vec3 v_Normal;
 out vec2 v_TexCoords;
 out mat3 v_TBN;
 out vec3 v_TangentViewDir;
+out vec4 v_Color;
 
 uniform mat4 u_Model;
 uniform mat4 u_View;
@@ -568,6 +588,7 @@ void main() {
     mat3 boneMat3 = mat3(boneTransform);
     v_Normal = u_NormalMatrix * (boneMat3 * a_Normal);
     v_TexCoords = a_TexCoords;
+    v_Color = a_Color;
 
     vec3 T = normalize(u_NormalMatrix * (boneMat3 * a_Tangent));
     vec3 B = normalize(u_NormalMatrix * (boneMat3 * a_Bitangent));
@@ -713,6 +734,18 @@ void Renderer3D::DrawMesh(const Ref<Mesh> &mesh, const Mat4 &transform,
   if (!mesh)
     return;
 
+  // Force solid rendering for models regardless of wireframe mode
+  // This fixes the wireframe rendering issue with imported models
+  bool wasWireframe = s_Data->wireframeMode;
+
+  // Always force solid rendering for models
+  glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+  // Also ensure proper face culling is enabled
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_BACK);
+  glFrontFace(GL_CCW);
+
   s_Data->pbrShader->Bind();
   s_Data->pbrShader->SetMat4("u_Model", transform);
   s_Data->pbrShader->SetMat4("u_View", s_Data->viewMatrix);
@@ -733,6 +766,7 @@ void Renderer3D::DrawMesh(const Ref<Mesh> &mesh, const Mat4 &transform,
 
   // Bind textures
   u32 textureUnit = 0;
+  bool usePackedMetalRough = false;
 
   if (material.albedoMap) {
     material.albedoMap->Bind(textureUnit);
@@ -766,6 +800,13 @@ void Renderer3D::DrawMesh(const Ref<Mesh> &mesh, const Mat4 &transform,
     s_Data->pbrShader->SetInt("u_HasRoughnessMap", 0);
   }
 
+  if (material.metallicMap && material.roughnessMap &&
+      material.metallicMap->GetID() == material.roughnessMap->GetID()) {
+    usePackedMetalRough = true;
+  }
+  s_Data->pbrShader->SetInt("u_UsePackedMetalRough",
+                            usePackedMetalRough ? 1 : 0);
+
   if (material.aoMap) {
     material.aoMap->Bind(textureUnit);
     s_Data->pbrShader->SetInt("u_AOMap", textureUnit++);
@@ -797,6 +838,13 @@ void Renderer3D::DrawMesh(const Ref<Mesh> &mesh, const Mat4 &transform,
   }
 
   mesh->Draw();
+
+  // Restore wireframe mode if it was enabled
+  if (wasWireframe) {
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+  } else {
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+  }
 
   s_Data->stats.drawCalls++;
   s_Data->stats.triangles += mesh->GetIndexCount() / 3;
@@ -878,13 +926,12 @@ void Renderer3D::DrawSkinnedModel(const Ref<Model> &model,
   shader->SetMat4("u_View", s_Data->viewMatrix);
   shader->SetMat4("u_Projection", s_Data->projectionMatrix);
   shader->SetMat3("u_NormalMatrix",
-                   glm::transpose(glm::inverse(Mat3(transform))));
+                  glm::transpose(glm::inverse(Mat3(transform))));
   shader->SetVec3("u_CameraPos", s_Data->cameraPosition);
 
   if (!boneMatrices.empty()) {
     shader->SetInt("u_HasBones", 1);
-    u32 count =
-        static_cast<u32>(std::min(boneMatrices.size(), size_t(100)));
+    u32 count = static_cast<u32>(std::min(boneMatrices.size(), size_t(100)));
     for (u32 i = 0; i < count; i++) {
       std::string uniformName = "u_BoneMatrices[" + std::to_string(i) + "]";
       shader->SetMat4(uniformName, boneMatrices[i]);
@@ -915,6 +962,7 @@ void Renderer3D::DrawSkinnedModel(const Ref<Model> &model,
     shader->SetVec3("u_Material_emissive", mat.emissive);
 
     u32 texUnit = 0;
+    bool usePackedMetalRough = false;
     auto bindTex = [&](Ref<Texture2D> &tex, const char *mapUniform,
                        const char *hasUniform) {
       if (tex) {
@@ -929,6 +977,11 @@ void Renderer3D::DrawSkinnedModel(const Ref<Model> &model,
     bindTex(mat.normalMap, "u_NormalMap", "u_HasNormalMap");
     bindTex(mat.metallicMap, "u_MetallicMap", "u_HasMetallicMap");
     bindTex(mat.roughnessMap, "u_RoughnessMap", "u_HasRoughnessMap");
+    if (mat.metallicMap && mat.roughnessMap &&
+        mat.metallicMap->GetID() == mat.roughnessMap->GetID()) {
+      usePackedMetalRough = true;
+    }
+    shader->SetInt("u_UsePackedMetalRough", usePackedMetalRough ? 1 : 0);
     bindTex(mat.aoMap, "u_AOMap", "u_HasAOMap");
     bindTex(mat.heightMap, "u_HeightMap", "u_HasHeightMap");
     if (!mat.heightMap) {

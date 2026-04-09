@@ -1,10 +1,23 @@
 #pragma once
 
+// Define platform for Diligent Engine
+#define PLATFORM_MACOS 1
+
 #include "../Core/Types.h"
 #include "../Renderer/Material3D.h"
 #include "../Renderer/Texture.h"
 #include "DiligentMaterial.h"
 #include "DiligentTexture.h"
+
+// Forward declarations
+struct GLFWwindow;
+
+// Diligent Engine includes
+#include "../../ThirdParty/DiligentEngine_v2.5.6/DiligentCore/Common/interface/RefCntAutoPtr.hpp"
+#include "../../ThirdParty/DiligentEngine_v2.5.6/DiligentCore/Graphics/GraphicsEngine/interface/DeviceContext.h"
+#include "../../ThirdParty/DiligentEngine_v2.5.6/DiligentCore/Graphics/GraphicsEngine/interface/EngineFactory.h"
+#include "../../ThirdParty/DiligentEngine_v2.5.6/DiligentCore/Graphics/GraphicsEngine/interface/RenderDevice.h"
+#include "../../ThirdParty/DiligentEngine_v2.5.6/DiligentCore/Graphics/GraphicsEngine/interface/SwapChain.h"
 
 namespace Gini {
 
@@ -42,11 +55,25 @@ public:
   void EnableFallback(bool enable);
   bool IsFallbackEnabled() const { return m_FallbackEnabled; }
 
+  // Diligent Engine initialization with window
+  bool InitializeDiligentEngineWithWindow(GLFWwindow *glfwWindow, u32 width,
+                                          u32 height);
+
 private:
   RendererAdapter();
 
+  // Diligent Engine initialization
+  bool InitializeDiligentEngine();
+  void ShutdownDiligentEngine();
+
   RendererBackend m_Backend = RendererBackend::OpenGL;
   bool m_FallbackEnabled = true;
+  bool m_DiligentEngineInitialized = false;
+
+  // Diligent Engine resources
+  Diligent::RefCntAutoPtr<Diligent::IRenderDevice> m_DiligentDevice;
+  Diligent::RefCntAutoPtr<Diligent::IDeviceContext> m_DiligentContext;
+  Diligent::RefCntAutoPtr<Diligent::ISwapChain> m_DiligentSwapChain;
 
   // Conversion caches
   std::unordered_map<u64, Ref<DiligentMaterial>> m_MaterialToDiligentCache;

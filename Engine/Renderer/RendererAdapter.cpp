@@ -2,6 +2,11 @@
 #include "../Core/Logger.h"
 #include "DiligentMaterial.h"
 
+// Diligent Engine includes for initialization
+#include "../../ThirdParty/DiligentEngine_v2.5.6/DiligentCore/Graphics/GraphicsEngineOpenGL/interface/EngineFactoryOpenGL.h"
+#include "../../ThirdParty/DiligentEngine_v2.5.6/DiligentCore/Graphics/GraphicsEngineVulkan/interface/EngineFactoryVk.h"
+#include "../../ThirdParty/DiligentEngine_v2.5.6/DiligentCore/Platforms/interface/NativeWindow.h"
+
 namespace Gini {
 
 // RendererAdapter Implementation
@@ -11,12 +16,18 @@ RendererAdapter &RendererAdapter::GetInstance() {
 }
 
 RendererAdapter::RendererAdapter() {
-  // Automatically default to OpenGL since Diligent Engine dependencies are not
-  // resolved
-  m_Backend = RendererBackend::OpenGL;
-  m_FallbackEnabled = true;
-  GINI_INFO("RendererAdapter initialized with OpenGL fallback (Diligent Engine "
-            "not available)");
+  // Attempt to initialize Diligent Engine
+  if (InitializeDiligentEngine()) {
+    m_Backend = RendererBackend::DiligentEngine;
+    m_FallbackEnabled = true;
+    GINI_INFO("RendererAdapter initialized with Diligent Engine backend");
+  } else {
+    // Fall back to OpenGL
+    m_Backend = RendererBackend::OpenGL;
+    m_FallbackEnabled = true;
+    GINI_INFO("RendererAdapter initialized with OpenGL fallback (Diligent "
+              "Engine initialization failed)");
+  }
 }
 
 void RendererAdapter::SetBackend(RendererBackend backend) {
@@ -24,6 +35,93 @@ void RendererAdapter::SetBackend(RendererBackend backend) {
   std::string backendName =
       (backend == RendererBackend::OpenGL ? "OpenGL" : "Diligent Engine");
   GINI_INFO("Renderer backend switched to: " + backendName);
+}
+
+bool RendererAdapter::InitializeDiligentEngine() {
+  // This method is called without window handle, so it cannot fully initialize
+  // Use InitializeDiligentEngineWithWindow instead
+  GINI_WARN("RendererAdapter::InitializeDiligentEngine requires window handle");
+  GINI_WARN("Use InitializeDiligentEngineWithWindow for full initialization");
+  return false;
+}
+
+bool RendererAdapter::InitializeDiligentEngineWithWindow(GLFWwindow *glfwWindow,
+                                                         u32 width,
+                                                         u32 height) {
+  if (!glfwWindow) {
+    GINI_ERROR(
+        "InitializeDiligentEngineWithWindow: Invalid GLFW window handle");
+    return false;
+  }
+
+  try {
+    // Get the OpenGL engine factory
+    auto *pFactoryGL = Diligent::GetEngineFactoryOpenGL();
+    if (!pFactoryGL) {
+      GINI_ERROR("Failed to get Diligent Engine OpenGL factory");
+      return false;
+    }
+
+    // Create NativeWindow structure for Diligent Engine
+    Diligent::NativeWindow nativeWindow;
+    nativeWindow = Diligent::NativeWindow{glfwWindow};
+
+    // Create swap chain description
+    Diligent::SwapChainDesc SCDesc;
+    SCDesc.Width = width;
+    SCDesc.Height = height;
+    SCDesc.ColorBufferFormat = Diligent::TEX_FORMAT_RGBA8_UNORM_SRGB;
+    SCDesc.DepthBufferFormat = Diligent::TEX_FORMAT_D32_FLOAT;
+    SCDesc.Usage = Diligent::SWAP_CHAIN_USAGE_RENDER_TARGET |
+                   Diligent::SWAP_CHAIN_USAGE_COPY_SOURCE;
+    SCDesc.BufferCount = 2;
+
+    // Create engine creation attributes
+    Diligent::EngineGLCreateInfo EngineCI;
+    EngineCI.Window = nativeWindow;
+
+    // Create device, context, and swap chain in one call
+    pFactoryGL->CreateDeviceAndSwapChainGL(EngineCI, &m_DiligentDevice,
+                                           &m_DiligentContext, SCDesc,
+                                           &m_DiligentSwapChain);
+
+    if (!m_DiligentDevice || !m_DiligentContext || !m_DiligentSwapChain) {
+      GINI_ERROR(
+          "Failed to create Diligent Engine device, context, or swap chain");
+      return false;
+    }
+
+    m_DiligentEngineInitialized = true;
+    GINI_INFO("Diligent Engine initialized successfully with OpenGL backend");
+    GINI_INFO("Device created with swap chain");
+
+    return true;
+  } catch (const std::exception &e) {
+    GINI_ERROR("Diligent Engine initialization failed with exception: " +
+               std::string(e.what()));
+    return false;
+  } catch (...) {
+    GINI_ERROR("Diligent Engine initialization failed with unknown exception");
+    return false;
+  }
+}
+
+void RendererAdapter::ShutdownDiligentEngine() {
+  // TODO: Implement Diligent Engine cleanup
+  // Release device, context, and swap chain resources
+
+  if (m_DiligentDevice) {
+    m_DiligentDevice.Release();
+  }
+  if (m_DiligentContext) {
+    m_DiligentContext.Release();
+  }
+  if (m_DiligentSwapChain) {
+    m_DiligentSwapChain.Release();
+  }
+
+  m_DiligentEngineInitialized = false;
+  GINI_INFO("Diligent Engine shutdown complete");
 }
 
 Ref<MaterialAsset> RendererAdapter::ConvertMaterial(
@@ -76,8 +174,7 @@ void RendererAdapter::SyncTextures() {
 }
 
 bool RendererAdapter::IsDiligentEngineAvailable() const {
-  // Diligent Engine dependencies are not resolved, so it's not available
-  return false;
+  return m_DiligentEngineInitialized;
 }
 
 bool RendererAdapter::IsOpenGLAvailable() const {

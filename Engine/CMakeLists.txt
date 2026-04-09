@@ -206,19 +206,21 @@ target_link_libraries(GiniEngine PUBLIC
     assimp::assimp
     yaml-cpp::yaml-cpp
     # Diligent Engine
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ThirdParty/DiligentEngine_v2.5.6/build/DiligentCore/Platforms/Apple/libDiligent-ApplePlatform.a
     Diligent-Common
     Diligent-Primitives
+    Diligent-GraphicsEngineOpenGL-static
     Diligent-GraphicsEngineVk-static
     Diligent-GraphicsTools
     Diligent-GraphicsAccessories
-    Diligent-ApplePlatform
     Diligent-ShaderTools
     Diligent-HLSL2GLSLConverterLib
     Diligent-Archiver-static
 )
 
-# Add Diligent Engine library directory
+# Add Diligent Engine library directories
 link_directories(${CMAKE_CURRENT_SOURCE_DIR}/../ThirdParty/DiligentEngine_v2.5.6/build/${CMAKE_BUILD_TYPE})
+link_directories(${CMAKE_CURRENT_SOURCE_DIR}/../ThirdParty/DiligentEngine_v2.5.6/build/DiligentCore/Platforms/Apple/${CMAKE_BUILD_TYPE})
 
 # Set Vulkan SDK path for Diligent Engine
 set(VULKAN_SDK "/opt/homebrew/opt/vulkan-headers" CACHE PATH "Vulkan SDK path")

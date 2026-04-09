@@ -3,9 +3,8 @@
 #include "EditorPanel.h"
 #include "Renderer/Camera3D.h"
 #include "Renderer/Framebuffer.h"
-#include "Renderer/Material.h"
+#include "Renderer/Material3D.h"
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace Gini {
@@ -72,13 +71,13 @@ public:
 
   void OnImGuiRender() override;
 
-  void OpenMaterial(Ref<Material> material);
+  void OpenMaterial(Ref<MaterialAsset> material);
   void LoadMaterialFromFile(const std::string &filepath);
   void NewMaterial();
   void SaveMaterial();
   void CompileMaterial();
 
-  Ref<Material> GetMaterial() const { return m_Material; }
+  Ref<MaterialAsset> GetMaterial() const { return m_Material; }
   bool IsOpen() const { return m_Visible; }
   void SetOpen(bool open) { m_Visible = open; }
 
@@ -109,7 +108,7 @@ private:
   u32 GenerateId();
 
   // Material being edited
-  Ref<Material> m_Material;
+  Ref<MaterialAsset> m_Material;
   std::string m_MaterialPath;
   bool m_IsDirty = false;
 

@@ -1,7 +1,8 @@
 #pragma once
 
-#include "EditorPanel.h"
 #include "Core/Types.h"
+#include "EditorPanel.h"
+#include "Renderer/Model3D.h"
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -36,8 +37,7 @@ public:
   void OnImGuiRender();
   bool IsOpen() const { return m_Open; }
 
-  using ImportCallback =
-      std::function<void(const std::string &gmeshPath)>;
+  using ImportCallback = std::function<void(const std::string &gmeshPath)>;
   void SetOnImportComplete(ImportCallback cb) { m_OnImportComplete = cb; }
 
 private:

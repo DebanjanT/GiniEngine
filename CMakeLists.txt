@@ -50,6 +50,33 @@ set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
+# Glad - OpenGL loading
+add_library(glad STATIC ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/glad/src/gl.c)
+target_include_directories(glad PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/glad/include)
+
+# stb_impl - Image loading implementation
+add_library(stb_impl STATIC ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/stb/stb_impl.cpp)
+target_include_directories(stb_impl PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/stb
+    ${CMAKE_BINARY_DIR}/_deps/stb-src
+)
+
+# imgui_lib - ImGui library
+add_library(imgui_lib STATIC
+    ${CMAKE_BINARY_DIR}/_deps/imgui-src/imgui.cpp
+    ${CMAKE_BINARY_DIR}/_deps/imgui-src/imgui_widgets.cpp
+    ${CMAKE_BINARY_DIR}/_deps/imgui-src/imgui_draw.cpp
+    ${CMAKE_BINARY_DIR}/_deps/imgui-src/imgui_tables.cpp
+    ${CMAKE_BINARY_DIR}/_deps/imgui-src/imgui_demo.cpp
+    ${CMAKE_BINARY_DIR}/_deps/imgui-src/backends/imgui_impl_glfw.cpp
+    ${CMAKE_BINARY_DIR}/_deps/imgui-src/backends/imgui_impl_opengl3.cpp
+)
+target_include_directories(imgui_lib PUBLIC
+    ${CMAKE_BINARY_DIR}/_deps/imgui-src
+    ${CMAKE_BINARY_DIR}/_deps/imgui-src/backends
+)
+target_link_libraries(imgui_lib PUBLIC glfw glad)
+
 # GLM - Math
 FetchContent_Declare(
     glm
@@ -107,58 +134,30 @@ set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
 set(ASSIMP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
-set(ASSIMP_NO_EXPORT ON CACHE BOOL "" FORCE)
+# Fix zlib fdopen macro conflict on macOS
+add_definitions(-Dfdopen=fdopen_disabled)
 
-set(ASSIMP_BUILD_ZLIB ON CACHE BOOL "" FORCE)
+# Diligent Engine - Modern Graphics Abstraction (using local ThirdParty copy)
+set(DILIGENT_ENGINE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/DiligentEngine_v2.5.6)
 
-set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
-add_definitions(-Dfdopen=fdopen)
-FetchContent_MakeAvailable(assimp)
-# Fetch all dependencies
+# Configure Diligent Engine build options
+option(DILIGENT_BUILD_SAMPLES "Build Diligent Engine samples" OFF)
+option(DILIGENT_BUILD_TESTS "Build Diligent Engine tests" OFF)
+option(DILIGENT_BUILD_TOOLS "Build Diligent Engine tools" OFF)
+
+# Add Diligent Engine as subdirectory
+add_subdirectory(${DILIGENT_ENGINE_ROOT} ${CMAKE_BINARY_DIR}/DiligentEngine)
+
+# Make available
 FetchContent_MakeAvailable(glfw glm entt stb imgui openal assimp yaml-cpp)
 
-# GLAD - OpenGL loader (we'll include it directly)
-add_library(glad STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/glad/src/gl.c
-)
-target_include_directories(glad PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/glad/include)
-
-# stb implementation library
-add_library(stb_impl STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/stb/stb_impl.cpp
-)
-target_include_directories(stb_impl PUBLIC ${stb_SOURCE_DIR})
-
-# ImGui library
-add_library(imgui_lib STATIC
-    ${imgui_SOURCE_DIR}/imgui.cpp
-    ${imgui_SOURCE_DIR}/imgui_demo.cpp
-    ${imgui_SOURCE_DIR}/imgui_draw.cpp
-    ${imgui_SOURCE_DIR}/imgui_tables.cpp
-    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
-)
-target_include_directories(imgui_lib PUBLIC
-    ${imgui_SOURCE_DIR}
-    ${imgui_SOURCE_DIR}/backends
-)
-target_link_libraries(imgui_lib PUBLIC glfw glad)
-
-# Engine library
+# Add subdirectories
 add_subdirectory(Engine)
 
-# Editor
 if(GINI_BUILD_EDITOR)
     add_subdirectory(Editor)
 endif()
 
-# Runtime
-if(GINI_BUILD_RUNTIME)
-    add_subdirectory(Runtime)
-endif()
-
-# Sample games
 if(GINI_BUILD_SAMPLES)
     add_subdirectory(Samples)
 endif()

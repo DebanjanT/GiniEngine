@@ -9,6 +9,9 @@
 
 namespace Gini {
 
+// Forward declarations for Diligent Engine integration
+class DiligentTerrain;
+
 // Terrain material layer for splatmap painting
 struct TerrainLayer {
   std::string name = "Layer";
@@ -124,6 +127,12 @@ public:
   static Ref<Terrain> Create(u32 width = 256, u32 height = 256,
                              f32 scale = 1.0f);
 
+  // Diligent Engine integration methods
+  void CreateDiligentTerrain();
+  void UpdateDiligentTerrain();
+  void RegisterWithHybridManager();
+  bool HasDiligentResources() const { return m_HasDiligentResources; }
+
 private:
   // Export helper functions
   void ExportBaseColorTexture(const std::string &filepath);
@@ -184,6 +193,9 @@ private:
   f32 m_AmbientIntensity = 0.15f;
 
   bool m_NeedsUpdate = true;
+
+  // Diligent Engine resources
+  bool m_HasDiligentResources = false;
 };
 
 } // namespace Gini

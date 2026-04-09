@@ -1814,4 +1814,21 @@ Ref<Terrain> Terrain::Create(u32 width, u32 height, f32 scale) {
   return CreateRef<Terrain>(width, height, scale);
 }
 
+// Diligent Engine integration implementations
+void Terrain::CreateDiligentTerrain() {
+  // Diligent Engine not available, this is a no-op
+  // OpenGL terrain rendering is already functional
+  m_HasDiligentResources = false;
+}
+
+void Terrain::UpdateDiligentTerrain() {
+  // Diligent Engine not available, this is a no-op
+  // OpenGL terrain updates are handled by the existing system
+}
+
+void Terrain::RegisterWithHybridManager() {
+  // Diligent Engine not available, this is a no-op
+  // OpenGL terrain rendering is already functional
+}
+
 } // namespace Gini

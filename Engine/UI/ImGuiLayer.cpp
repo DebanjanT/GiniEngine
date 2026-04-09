@@ -63,6 +63,7 @@ float ImGuiLayer::m_fontSize = 16.0f;
 float ImGuiLayer::m_pendingFontSize = -1.0f;
 bool ImGuiLayer::s_Initialized = false;
 bool ImGuiLayer::s_BlockEvents = true;
+bool ImGuiLayer::s_HasDiligentResources = false;
 
 void ImGuiLayer::Init() {
   if (s_Initialized)
@@ -228,10 +229,10 @@ void ImGuiLayer::SetDarkTheme() {
 
   // -- Palette --
   // Background tiers (darkest to lightest)
-  ImVec4 bg0(0.11f, 0.11f, 0.12f, 1.0f);   // deepest panels
-  ImVec4 bg1(0.14f, 0.14f, 0.15f, 1.0f);   // windows
-  ImVec4 bg2(0.17f, 0.17f, 0.19f, 1.0f);   // child / popup
-  ImVec4 bg3(0.20f, 0.20f, 0.22f, 1.0f);   // frames / input fields
+  ImVec4 bg0(0.11f, 0.11f, 0.12f, 1.0f); // deepest panels
+  ImVec4 bg1(0.14f, 0.14f, 0.15f, 1.0f); // windows
+  ImVec4 bg2(0.17f, 0.17f, 0.19f, 1.0f); // child / popup
+  ImVec4 bg3(0.20f, 0.20f, 0.22f, 1.0f); // frames / input fields
 
   // Accent (teal-blue)
   ImVec4 accent(0.18f, 0.56f, 0.72f, 1.0f);
@@ -248,65 +249,65 @@ void ImGuiLayer::SetDarkTheme() {
   ImVec4 activeSurface(0.20f, 0.20f, 0.22f, 1.0f);
 
   // -- Backgrounds --
-  colors[ImGuiCol_WindowBg]  = bg1;
-  colors[ImGuiCol_ChildBg]   = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-  colors[ImGuiCol_PopupBg]   = ImVec4(0.13f, 0.13f, 0.15f, 0.96f);
+  colors[ImGuiCol_WindowBg] = bg1;
+  colors[ImGuiCol_ChildBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+  colors[ImGuiCol_PopupBg] = ImVec4(0.13f, 0.13f, 0.15f, 0.96f);
   colors[ImGuiCol_MenuBarBg] = bg0;
 
   // -- Borders --
-  colors[ImGuiCol_Border]       = ImVec4(0.24f, 0.24f, 0.26f, 0.65f);
+  colors[ImGuiCol_Border] = ImVec4(0.24f, 0.24f, 0.26f, 0.65f);
   colors[ImGuiCol_BorderShadow] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
 
   // -- Text --
-  colors[ImGuiCol_Text]         = textPrimary;
+  colors[ImGuiCol_Text] = textPrimary;
   colors[ImGuiCol_TextDisabled] = textSecondary;
 
   // -- Headers (tree nodes, collapsing headers) --
-  colors[ImGuiCol_Header]        = ImVec4(0.20f, 0.20f, 0.22f, 1.0f);
+  colors[ImGuiCol_Header] = ImVec4(0.20f, 0.20f, 0.22f, 1.0f);
   colors[ImGuiCol_HeaderHovered] = hoverSurface;
-  colors[ImGuiCol_HeaderActive]  = activeSurface;
+  colors[ImGuiCol_HeaderActive] = activeSurface;
 
   // -- Buttons (muted, not overly bright) --
-  colors[ImGuiCol_Button]        = ImVec4(0.22f, 0.23f, 0.25f, 1.0f);
+  colors[ImGuiCol_Button] = ImVec4(0.22f, 0.23f, 0.25f, 1.0f);
   colors[ImGuiCol_ButtonHovered] = ImVec4(0.28f, 0.29f, 0.32f, 1.0f);
-  colors[ImGuiCol_ButtonActive]  = accent;
+  colors[ImGuiCol_ButtonActive] = accent;
 
   // -- Input frames --
-  colors[ImGuiCol_FrameBg]        = bg3;
+  colors[ImGuiCol_FrameBg] = bg3;
   colors[ImGuiCol_FrameBgHovered] = ImVec4(0.24f, 0.24f, 0.27f, 1.0f);
-  colors[ImGuiCol_FrameBgActive]  = ImVec4(0.22f, 0.22f, 0.25f, 1.0f);
+  colors[ImGuiCol_FrameBgActive] = ImVec4(0.22f, 0.22f, 0.25f, 1.0f);
 
   // -- Tabs --
-  colors[ImGuiCol_Tab]                = bg0;
-  colors[ImGuiCol_TabHovered]         = ImVec4(0.22f, 0.22f, 0.25f, 1.0f);
-  colors[ImGuiCol_TabActive]          = bg1;
-  colors[ImGuiCol_TabUnfocused]       = bg0;
+  colors[ImGuiCol_Tab] = bg0;
+  colors[ImGuiCol_TabHovered] = ImVec4(0.22f, 0.22f, 0.25f, 1.0f);
+  colors[ImGuiCol_TabActive] = bg1;
+  colors[ImGuiCol_TabUnfocused] = bg0;
   colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.14f, 0.14f, 0.16f, 1.0f);
 
   // -- Title bars --
-  colors[ImGuiCol_TitleBg]          = bg0;
-  colors[ImGuiCol_TitleBgActive]    = bg0;
+  colors[ImGuiCol_TitleBg] = bg0;
+  colors[ImGuiCol_TitleBgActive] = bg0;
   colors[ImGuiCol_TitleBgCollapsed] = bg0;
 
   // -- Scrollbar --
-  colors[ImGuiCol_ScrollbarBg]          = ImVec4(0.10f, 0.10f, 0.11f, 0.6f);
-  colors[ImGuiCol_ScrollbarGrab]        = ImVec4(0.28f, 0.28f, 0.30f, 1.0f);
+  colors[ImGuiCol_ScrollbarBg] = ImVec4(0.10f, 0.10f, 0.11f, 0.6f);
+  colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.28f, 0.28f, 0.30f, 1.0f);
   colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.36f, 0.36f, 0.38f, 1.0f);
-  colors[ImGuiCol_ScrollbarGrabActive]  = accent;
+  colors[ImGuiCol_ScrollbarGrabActive] = accent;
 
   // -- Separators --
-  colors[ImGuiCol_Separator]        = ImVec4(0.24f, 0.24f, 0.26f, 0.50f);
+  colors[ImGuiCol_Separator] = ImVec4(0.24f, 0.24f, 0.26f, 0.50f);
   colors[ImGuiCol_SeparatorHovered] = accentMuted;
-  colors[ImGuiCol_SeparatorActive]  = accent;
+  colors[ImGuiCol_SeparatorActive] = accent;
 
   // -- Resize grip --
-  colors[ImGuiCol_ResizeGrip]        = ImVec4(0.24f, 0.24f, 0.26f, 0.25f);
+  colors[ImGuiCol_ResizeGrip] = ImVec4(0.24f, 0.24f, 0.26f, 0.25f);
   colors[ImGuiCol_ResizeGripHovered] = accentMuted;
-  colors[ImGuiCol_ResizeGripActive]  = accent;
+  colors[ImGuiCol_ResizeGripActive] = accent;
 
   // -- Selection / interaction accent --
-  colors[ImGuiCol_CheckMark]       = accent;
-  colors[ImGuiCol_SliderGrab]      = accent;
+  colors[ImGuiCol_CheckMark] = accent;
+  colors[ImGuiCol_SliderGrab] = accent;
   colors[ImGuiCol_SliderGrabActive] = accentActive;
 
   // -- Docking --
@@ -314,52 +315,52 @@ void ImGuiLayer::SetDarkTheme() {
   colors[ImGuiCol_DockingEmptyBg] = bg0;
 
   // -- Plot --
-  colors[ImGuiCol_PlotLines]            = accent;
-  colors[ImGuiCol_PlotLinesHovered]     = accentHover;
-  colors[ImGuiCol_PlotHistogram]        = accent;
+  colors[ImGuiCol_PlotLines] = accent;
+  colors[ImGuiCol_PlotLinesHovered] = accentHover;
+  colors[ImGuiCol_PlotHistogram] = accent;
   colors[ImGuiCol_PlotHistogramHovered] = accentHover;
 
   // -- Nav --
   colors[ImGuiCol_NavHighlight] = accent;
 
   // -- Table --
-  colors[ImGuiCol_TableHeaderBg]     = bg0;
+  colors[ImGuiCol_TableHeaderBg] = bg0;
   colors[ImGuiCol_TableBorderStrong] = ImVec4(0.24f, 0.24f, 0.26f, 0.60f);
-  colors[ImGuiCol_TableBorderLight]  = ImVec4(0.20f, 0.20f, 0.22f, 0.40f);
-  colors[ImGuiCol_TableRowBg]        = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-  colors[ImGuiCol_TableRowBgAlt]     = ImVec4(1.0f, 1.0f, 1.0f, 0.015f);
+  colors[ImGuiCol_TableBorderLight] = ImVec4(0.20f, 0.20f, 0.22f, 0.40f);
+  colors[ImGuiCol_TableRowBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+  colors[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.015f);
 
   // ===== Geometry =====
-  style.WindowRounding    = 2.0f;
-  style.ChildRounding     = 2.0f;
-  style.FrameRounding     = 3.0f;
-  style.PopupRounding     = 3.0f;
+  style.WindowRounding = 2.0f;
+  style.ChildRounding = 2.0f;
+  style.FrameRounding = 3.0f;
+  style.PopupRounding = 3.0f;
   style.ScrollbarRounding = 6.0f;
-  style.GrabRounding      = 2.0f;
-  style.TabRounding       = 2.0f;
+  style.GrabRounding = 2.0f;
+  style.TabRounding = 2.0f;
 
   // ===== Sizing =====
-  style.WindowPadding     = ImVec2(8, 8);
-  style.FramePadding      = ImVec2(6, 4);
-  style.CellPadding       = ImVec2(4, 2);
-  style.ItemSpacing       = ImVec2(8, 4);
-  style.ItemInnerSpacing  = ImVec2(4, 4);
-  style.IndentSpacing     = 16.0f;
-  style.ScrollbarSize     = 12.0f;
-  style.GrabMinSize       = 8.0f;
+  style.WindowPadding = ImVec2(8, 8);
+  style.FramePadding = ImVec2(6, 4);
+  style.CellPadding = ImVec2(4, 2);
+  style.ItemSpacing = ImVec2(8, 4);
+  style.ItemInnerSpacing = ImVec2(4, 4);
+  style.IndentSpacing = 16.0f;
+  style.ScrollbarSize = 12.0f;
+  style.GrabMinSize = 8.0f;
 
   // ===== Borders =====
-  style.WindowBorderSize  = 1.0f;
-  style.ChildBorderSize   = 0.0f;
-  style.PopupBorderSize   = 1.0f;
-  style.FrameBorderSize   = 0.0f;
-  style.TabBorderSize     = 0.0f;
+  style.WindowBorderSize = 1.0f;
+  style.ChildBorderSize = 0.0f;
+  style.PopupBorderSize = 1.0f;
+  style.FrameBorderSize = 0.0f;
+  style.TabBorderSize = 0.0f;
 
   // ===== Misc =====
   style.WindowMenuButtonPosition = ImGuiDir_None;
-  style.ColorButtonPosition      = ImGuiDir_Right;
-  style.WindowTitleAlign         = ImVec2(0.02f, 0.50f);
-  style.SeparatorTextBorderSize  = 2.0f;
+  style.ColorButtonPosition = ImGuiDir_Right;
+  style.WindowTitleAlign = ImVec2(0.02f, 0.50f);
+  style.SeparatorTextBorderSize = 2.0f;
 }
 
 void ImGuiLayer::SetLightTheme() { ImGui::StyleColorsLight(); }
@@ -508,6 +509,23 @@ void ImGuiLayer::ShowProfiler() {
   ImGui::Text("GPU Memory: -- MB");
 
   ImGui::End();
+}
+
+// Diligent Engine integration implementations
+void ImGuiLayer::CreateDiligentImGui() {
+  // Diligent Engine not available, this is a no-op
+  // OpenGL ImGui integration is already functional
+  s_HasDiligentResources = false;
+}
+
+void ImGuiLayer::UpdateDiligentImGui() {
+  // Diligent Engine not available, this is a no-op
+  // OpenGL ImGui updates are handled by the existing system
+}
+
+void ImGuiLayer::RegisterWithHybridManager() {
+  // Diligent Engine not available, this is a no-op
+  // OpenGL ImGui integration is already functional
 }
 
 } // namespace Gini

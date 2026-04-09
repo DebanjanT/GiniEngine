@@ -5,6 +5,7 @@
 #include "Renderer/Light.h"
 #include "Renderer/Mesh.h"
 #include "Renderer/Model.h"
+#include "Renderer/Model3D.h"
 #include "Renderer/Shader.h"
 #include "Renderer/Texture.h"
 
@@ -51,6 +52,9 @@ public:
   static void DrawModel(const Ref<Model> &model, const Vec3 &position,
                         const Vec3 &rotation = Vec3(0.0f),
                         const Vec3 &scale = Vec3(1.0f));
+
+  // Improved Model3D drawing (Hazel-based)
+  static void DrawModel3D(const Ref<Model3D> &model, const Mat4 &transform);
 
   // Primitive shapes
   static void DrawCube(const Vec3 &position, const Vec3 &size,

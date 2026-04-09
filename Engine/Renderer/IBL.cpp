@@ -8,29 +8,32 @@
 namespace Gini {
 
 struct IBLData {
-    u32 irradianceMap = 0;
-    u32 prefilterMap = 0;
-    u32 brdfLUT = 0;
-    u32 captureFBO = 0;
-    u32 captureRBO = 0;
-    u32 envCubemap = 0;
-    u32 skyCaptureFBO = 0;
-    Ref<Shader> equirectToCubemapShader;
-    Ref<Shader> irradianceShader;
-    Ref<Shader> prefilterShader;
-    Ref<Shader> brdfShader;
-    Ref<Shader> skyCaptureShader;
-    u32 cubeVAO = 0;
-    u32 cubeVBO = 0;
-    u32 quadVAO = 0;
-    u32 quadVBO = 0;
-    f32 maxReflectionLod = 4.0f;
-    bool ready = false;
+  u32 irradianceMap = 0;
+  u32 prefilterMap = 0;
+  u32 brdfLUT = 0;
+  u32 captureFBO = 0;
+  u32 captureRBO = 0;
+  u32 envCubemap = 0;
+  u32 skyCaptureFBO = 0;
+  Ref<Shader> equirectToCubemapShader;
+  Ref<Shader> irradianceShader;
+  Ref<Shader> prefilterShader;
+  Ref<Shader> brdfShader;
+  Ref<Shader> skyCaptureShader;
+  u32 cubeVAO = 0;
+  u32 cubeVBO = 0;
+  u32 quadVAO = 0;
+  u32 quadVBO = 0;
+  f32 maxReflectionLod = 4.0f;
+  bool ready = false;
 };
 
-static IBLData* s_IBL = nullptr;
+static IBLData *s_IBL = nullptr;
 
-static const char* s_IBLIrradianceVS = R"(
+// Diligent Engine resources
+bool IBL::s_HasDiligentResources = false;
+
+static const char *s_IBLIrradianceVS = R"(
 #version 410 core
 layout (location = 0) in vec3 a_Position;
 out vec3 v_LocalPos;
@@ -42,7 +45,7 @@ void main() {
 }
 )";
 
-static const char* s_IBLIrradianceFS = R"(
+static const char *s_IBLIrradianceFS = R"(
 #version 410 core
 out vec4 FragColor;
 in vec3 v_LocalPos;
@@ -74,7 +77,7 @@ void main() {
 }
 )";
 
-static const char* s_IBLPrefilterFS = R"(
+static const char *s_IBLPrefilterFS = R"(
 #version 410 core
 out vec4 FragColor;
 in vec3 v_LocalPos;
@@ -137,7 +140,7 @@ void main() {
 }
 )";
 
-static const char* s_BRDFLUT_VS = R"(
+static const char *s_BRDFLUT_VS = R"(
 #version 410 core
 layout (location = 0) in vec2 a_Position;
 layout (location = 1) in vec2 a_TexCoords;
@@ -148,7 +151,7 @@ void main() {
 }
 )";
 
-static const char* s_BRDFLUT_FS = R"(
+static const char *s_BRDFLUT_FS = R"(
 #version 410 core
 out vec2 FragColor;
 in vec2 v_TexCoords;
@@ -221,336 +224,389 @@ void main() {
 )";
 
 static void InitCubeVAO() {
-    float vertices[] = {
-        -1.0f,  1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f, -1.0f, -1.0f,
-         1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,  1.0f, -1.0f,
-        -1.0f, -1.0f,  1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f, -1.0f,
-        -1.0f,  1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,  1.0f,
-         1.0f, -1.0f, -1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f,  1.0f,  1.0f, -1.0f,  1.0f, -1.0f, -1.0f,
-        -1.0f, -1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f,  1.0f, -1.0f,  1.0f, -1.0f, -1.0f,  1.0f,
-        -1.0f,  1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f,  1.0f,  1.0f,
-         1.0f,  1.0f,  1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f, -1.0f,
-        -1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f, -1.0f,
-         1.0f, -1.0f, -1.0f, -1.0f, -1.0f,  1.0f,  1.0f, -1.0f,  1.0f
-    };
-    glGenVertexArrays(1, &s_IBL->cubeVAO);
-    glGenBuffers(1, &s_IBL->cubeVBO);
-    glBindVertexArray(s_IBL->cubeVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, s_IBL->cubeVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-    glBindVertexArray(0);
+  float vertices[] = {
+      -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,
+      -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f,
+      1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f,
+      -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,
+      -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+      -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,
+      1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f,
+      -1.0f, 1.0f,  -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,
+      1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f,
+      -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,
+      -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f};
+  glGenVertexArrays(1, &s_IBL->cubeVAO);
+  glGenBuffers(1, &s_IBL->cubeVBO);
+  glBindVertexArray(s_IBL->cubeVAO);
+  glBindBuffer(GL_ARRAY_BUFFER, s_IBL->cubeVBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+  glBindVertexArray(0);
 }
 
 static void InitQuadVAO() {
-    float quadVertices[] = {
-        -1.0f,  1.0f, 0.0f, 1.0f,
-        -1.0f, -1.0f, 0.0f, 0.0f,
-         1.0f, -1.0f, 1.0f, 0.0f,
-        -1.0f,  1.0f, 0.0f, 1.0f,
-         1.0f, -1.0f, 1.0f, 0.0f,
-         1.0f,  1.0f, 1.0f, 1.0f
-    };
-    glGenVertexArrays(1, &s_IBL->quadVAO);
-    glGenBuffers(1, &s_IBL->quadVBO);
-    glBindVertexArray(s_IBL->quadVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, s_IBL->quadVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-    glBindVertexArray(0);
+  float quadVertices[] = {-1.0f, 1.0f,  0.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f,
+                          1.0f,  -1.0f, 1.0f, 0.0f, -1.0f, 1.0f,  0.0f, 1.0f,
+                          1.0f,  -1.0f, 1.0f, 0.0f, 1.0f,  1.0f,  1.0f, 1.0f};
+  glGenVertexArrays(1, &s_IBL->quadVAO);
+  glGenBuffers(1, &s_IBL->quadVBO);
+  glBindVertexArray(s_IBL->quadVAO);
+  glBindBuffer(GL_ARRAY_BUFFER, s_IBL->quadVBO);
+  glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices,
+               GL_STATIC_DRAW);
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void *)0);
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
+                        (void *)(2 * sizeof(float)));
+  glBindVertexArray(0);
 }
 
 void IBL::Init() {
-    s_IBL = new IBLData();
+  s_IBL = new IBLData();
 
-    InitCubeVAO();
-    InitQuadVAO();
+  InitCubeVAO();
+  InitQuadVAO();
 
-    s_IBL->irradianceShader = Shader::Create(s_IBLIrradianceVS, s_IBLIrradianceFS);
-    s_IBL->prefilterShader = Shader::Create(s_IBLIrradianceVS, s_IBLPrefilterFS);
-    s_IBL->brdfShader = Shader::Create(s_BRDFLUT_VS, s_BRDFLUT_FS);
+  s_IBL->irradianceShader =
+      Shader::Create(s_IBLIrradianceVS, s_IBLIrradianceFS);
+  s_IBL->prefilterShader = Shader::Create(s_IBLIrradianceVS, s_IBLPrefilterFS);
+  s_IBL->brdfShader = Shader::Create(s_BRDFLUT_VS, s_BRDFLUT_FS);
 
-    glGenFramebuffers(1, &s_IBL->captureFBO);
-    glGenRenderbuffers(1, &s_IBL->captureRBO);
+  glGenFramebuffers(1, &s_IBL->captureFBO);
+  glGenRenderbuffers(1, &s_IBL->captureRBO);
 
-    GenerateBRDFLUT();
-    GenerateDefaultIBL();
+  GenerateBRDFLUT();
+  GenerateDefaultIBL();
 
-    GINI_INFO("IBL system initialized");
+  GINI_INFO("IBL system initialized");
 }
 
 void IBL::Shutdown() {
-    if (s_IBL) {
-        if (s_IBL->irradianceMap) glDeleteTextures(1, &s_IBL->irradianceMap);
-        if (s_IBL->prefilterMap) glDeleteTextures(1, &s_IBL->prefilterMap);
-        if (s_IBL->brdfLUT) glDeleteTextures(1, &s_IBL->brdfLUT);
-        if (s_IBL->envCubemap) glDeleteTextures(1, &s_IBL->envCubemap);
-        if (s_IBL->captureFBO) glDeleteFramebuffers(1, &s_IBL->captureFBO);
-        if (s_IBL->captureRBO) glDeleteRenderbuffers(1, &s_IBL->captureRBO);
-        if (s_IBL->cubeVAO) glDeleteVertexArrays(1, &s_IBL->cubeVAO);
-        if (s_IBL->cubeVBO) glDeleteBuffers(1, &s_IBL->cubeVBO);
-        if (s_IBL->quadVAO) glDeleteVertexArrays(1, &s_IBL->quadVAO);
-        if (s_IBL->quadVBO) glDeleteBuffers(1, &s_IBL->quadVBO);
-        delete s_IBL;
-        s_IBL = nullptr;
-    }
+  if (s_IBL) {
+    if (s_IBL->irradianceMap)
+      glDeleteTextures(1, &s_IBL->irradianceMap);
+    if (s_IBL->prefilterMap)
+      glDeleteTextures(1, &s_IBL->prefilterMap);
+    if (s_IBL->brdfLUT)
+      glDeleteTextures(1, &s_IBL->brdfLUT);
+    if (s_IBL->envCubemap)
+      glDeleteTextures(1, &s_IBL->envCubemap);
+    if (s_IBL->captureFBO)
+      glDeleteFramebuffers(1, &s_IBL->captureFBO);
+    if (s_IBL->captureRBO)
+      glDeleteRenderbuffers(1, &s_IBL->captureRBO);
+    if (s_IBL->cubeVAO)
+      glDeleteVertexArrays(1, &s_IBL->cubeVAO);
+    if (s_IBL->cubeVBO)
+      glDeleteBuffers(1, &s_IBL->cubeVBO);
+    if (s_IBL->quadVAO)
+      glDeleteVertexArrays(1, &s_IBL->quadVAO);
+    if (s_IBL->quadVBO)
+      glDeleteBuffers(1, &s_IBL->quadVBO);
+    delete s_IBL;
+    s_IBL = nullptr;
+  }
 }
 
 void IBL::GenerateBRDFLUT() {
-    if (!s_IBL) return;
+  if (!s_IBL)
+    return;
 
-    glGenTextures(1, &s_IBL->brdfLUT);
-    glBindTexture(GL_TEXTURE_2D, s_IBL->brdfLUT);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, 512, 512, 0, GL_RG, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glGenTextures(1, &s_IBL->brdfLUT);
+  glBindTexture(GL_TEXTURE_2D, s_IBL->brdfLUT);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, 512, 512, 0, GL_RG, GL_FLOAT,
+               nullptr);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, s_IBL->captureFBO);
-    glBindRenderbuffer(GL_RENDERBUFFER, s_IBL->captureRBO);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 512, 512);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, s_IBL->brdfLUT, 0);
+  glBindFramebuffer(GL_FRAMEBUFFER, s_IBL->captureFBO);
+  glBindRenderbuffer(GL_RENDERBUFFER, s_IBL->captureRBO);
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 512, 512);
+  glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                         s_IBL->brdfLUT, 0);
 
-    glViewport(0, 0, 512, 512);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    s_IBL->brdfShader->Bind();
-    glBindVertexArray(s_IBL->quadVAO);
-    glDrawArrays(GL_TRIANGLES, 0, 6);
-    glBindVertexArray(0);
+  glViewport(0, 0, 512, 512);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  s_IBL->brdfShader->Bind();
+  glBindVertexArray(s_IBL->quadVAO);
+  glDrawArrays(GL_TRIANGLES, 0, 6);
+  glBindVertexArray(0);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    GINI_INFO("BRDF LUT generated (512x512)");
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  GINI_INFO("BRDF LUT generated (512x512)");
 }
 
 void IBL::GenerateDefaultIBL() {
-    if (!s_IBL) return;
+  if (!s_IBL)
+    return;
 
-    const u32 faceSize = 16;
-    std::vector<float> pixels(faceSize * faceSize * 3);
+  const u32 faceSize = 16;
+  std::vector<float> pixels(faceSize * faceSize * 3);
 
-    auto fillFace = [&](float topR, float topG, float topB,
-                        float botR, float botG, float botB) {
-        for (u32 y = 0; y < faceSize; y++) {
-            float t = static_cast<float>(y) / static_cast<float>(faceSize - 1);
-            float r = topR + (botR - topR) * t;
-            float g = topG + (botG - topG) * t;
-            float b = topB + (botB - topB) * t;
-            for (u32 x = 0; x < faceSize; x++) {
-                u32 idx = (y * faceSize + x) * 3;
-                pixels[idx + 0] = r;
-                pixels[idx + 1] = g;
-                pixels[idx + 2] = b;
-            }
-        }
-    };
-
-    if (s_IBL->envCubemap) glDeleteTextures(1, &s_IBL->envCubemap);
-    glGenTextures(1, &s_IBL->envCubemap);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, s_IBL->envCubemap);
-
-    // +X (right), -X (left), +Z (front), -Z (back): neutral gradient
-    // +Y (up): sky color, -Y (down): ground color
-    for (u32 i = 0; i < 6; i++) {
-        if (i == 2) {
-            // +Y face (top): sky blue
-            fillFace(0.15f, 0.2f, 0.35f,  0.15f, 0.2f, 0.35f);
-        } else if (i == 3) {
-            // -Y face (bottom): dark ground
-            fillFace(0.02f, 0.02f, 0.02f,  0.02f, 0.02f, 0.02f);
-        } else {
-            // Side faces: gradient from sky to ground
-            fillFace(0.15f, 0.2f, 0.35f,  0.04f, 0.04f, 0.05f);
-        }
-        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F,
-                     faceSize, faceSize, 0, GL_RGB, GL_FLOAT, pixels.data());
+  auto fillFace = [&](float topR, float topG, float topB, float botR,
+                      float botG, float botB) {
+    for (u32 y = 0; y < faceSize; y++) {
+      float t = static_cast<float>(y) / static_cast<float>(faceSize - 1);
+      float r = topR + (botR - topR) * t;
+      float g = topG + (botG - topG) * t;
+      float b = topB + (botB - topB) * t;
+      for (u32 x = 0; x < faceSize; x++) {
+        u32 idx = (y * faceSize + x) * 3;
+        pixels[idx + 0] = r;
+        pixels[idx + 1] = g;
+        pixels[idx + 2] = b;
+      }
     }
+  };
 
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  if (s_IBL->envCubemap)
+    glDeleteTextures(1, &s_IBL->envCubemap);
+  glGenTextures(1, &s_IBL->envCubemap);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, s_IBL->envCubemap);
 
-    GenerateFromCubemap(s_IBL->envCubemap, faceSize);
-    GINI_INFO("Default IBL generated (fallback environment)");
+  // +X (right), -X (left), +Z (front), -Z (back): neutral gradient
+  // +Y (up): bright sky color, -Y (down): ground color
+  for (u32 i = 0; i < 6; i++) {
+    if (i == 2) {
+      // +Y face (top): bright sky blue with warm tint
+      fillFace(0.8f, 0.9f, 1.2f, 0.8f, 0.9f, 1.2f);
+    } else if (i == 3) {
+      // -Y face (bottom): darker ground with subtle blue tint
+      fillFace(0.1f, 0.12f, 0.15f, 0.1f, 0.12f, 0.15f);
+    } else {
+      // Side faces: gradient from bright sky to ground
+      fillFace(0.6f, 0.7f, 0.9f, 0.15f, 0.18f, 0.22f);
+    }
+    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F, faceSize,
+                 faceSize, 0, GL_RGB, GL_FLOAT, pixels.data());
+  }
+
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+  GenerateFromCubemap(s_IBL->envCubemap, faceSize);
+  GINI_INFO("Default IBL generated (fallback environment)");
 }
 
 void IBL::GenerateFromCubemap(u32 envCubemap, u32 size) {
-    if (!s_IBL || envCubemap == 0) return;
+  if (!s_IBL || envCubemap == 0)
+    return;
 
-    Mat4 captureProjection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-    Mat4 captureViews[] = {
-        glm::lookAt(Vec3(0), Vec3( 1, 0, 0), Vec3(0,-1, 0)),
-        glm::lookAt(Vec3(0), Vec3(-1, 0, 0), Vec3(0,-1, 0)),
-        glm::lookAt(Vec3(0), Vec3( 0, 1, 0), Vec3(0, 0, 1)),
-        glm::lookAt(Vec3(0), Vec3( 0,-1, 0), Vec3(0, 0,-1)),
-        glm::lookAt(Vec3(0), Vec3( 0, 0, 1), Vec3(0,-1, 0)),
-        glm::lookAt(Vec3(0), Vec3( 0, 0,-1), Vec3(0,-1, 0))
-    };
+  Mat4 captureProjection =
+      glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
+  Mat4 captureViews[] = {glm::lookAt(Vec3(0), Vec3(1, 0, 0), Vec3(0, -1, 0)),
+                         glm::lookAt(Vec3(0), Vec3(-1, 0, 0), Vec3(0, -1, 0)),
+                         glm::lookAt(Vec3(0), Vec3(0, 1, 0), Vec3(0, 0, 1)),
+                         glm::lookAt(Vec3(0), Vec3(0, -1, 0), Vec3(0, 0, -1)),
+                         glm::lookAt(Vec3(0), Vec3(0, 0, 1), Vec3(0, -1, 0)),
+                         glm::lookAt(Vec3(0), Vec3(0, 0, -1), Vec3(0, -1, 0))};
 
-    // Generate irradiance map (32x32)
-    if (s_IBL->irradianceMap) glDeleteTextures(1, &s_IBL->irradianceMap);
-    glGenTextures(1, &s_IBL->irradianceMap);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, s_IBL->irradianceMap);
-    for (u32 i = 0; i < 6; i++)
-        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F, 32, 32, 0, GL_RGB, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  // Generate irradiance map (32x32)
+  if (s_IBL->irradianceMap)
+    glDeleteTextures(1, &s_IBL->irradianceMap);
+  glGenTextures(1, &s_IBL->irradianceMap);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, s_IBL->irradianceMap);
+  for (u32 i = 0; i < 6; i++)
+    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F, 32, 32, 0,
+                 GL_RGB, GL_FLOAT, nullptr);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, s_IBL->captureFBO);
+  glBindFramebuffer(GL_FRAMEBUFFER, s_IBL->captureFBO);
+  glBindRenderbuffer(GL_RENDERBUFFER, s_IBL->captureRBO);
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 32, 32);
+
+  s_IBL->irradianceShader->Bind();
+  s_IBL->irradianceShader->SetInt("u_EnvironmentMap", 0);
+  s_IBL->irradianceShader->SetMat4("u_Projection", captureProjection);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, envCubemap);
+  glViewport(0, 0, 32, 32);
+  for (u32 i = 0; i < 6; i++) {
+    s_IBL->irradianceShader->SetMat4("u_View", captureViews[i]);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+                           s_IBL->irradianceMap, 0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glBindVertexArray(s_IBL->cubeVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+  }
+
+  // Generate prefilter map (128x128, 5 mip levels)
+  if (s_IBL->prefilterMap)
+    glDeleteTextures(1, &s_IBL->prefilterMap);
+  glGenTextures(1, &s_IBL->prefilterMap);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, s_IBL->prefilterMap);
+  for (u32 i = 0; i < 6; i++)
+    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F, 128, 128, 0,
+                 GL_RGB, GL_FLOAT, nullptr);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER,
+                  GL_LINEAR_MIPMAP_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+
+  s_IBL->prefilterShader->Bind();
+  s_IBL->prefilterShader->SetInt("u_EnvironmentMap", 0);
+  s_IBL->prefilterShader->SetMat4("u_Projection", captureProjection);
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, envCubemap);
+
+  u32 maxMipLevels = 5;
+  for (u32 mip = 0; mip < maxMipLevels; mip++) {
+    u32 mipWidth = static_cast<u32>(128 * std::pow(0.5, mip));
+    u32 mipHeight = mipWidth;
     glBindRenderbuffer(GL_RENDERBUFFER, s_IBL->captureRBO);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 32, 32);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, mipWidth,
+                          mipHeight);
+    glViewport(0, 0, mipWidth, mipHeight);
 
-    s_IBL->irradianceShader->Bind();
-    s_IBL->irradianceShader->SetInt("u_EnvironmentMap", 0);
-    s_IBL->irradianceShader->SetMat4("u_Projection", captureProjection);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, envCubemap);
-    glViewport(0, 0, 32, 32);
+    f32 roughness = static_cast<f32>(mip) / static_cast<f32>(maxMipLevels - 1);
+    s_IBL->prefilterShader->SetFloat("u_Roughness", roughness);
     for (u32 i = 0; i < 6; i++) {
-        s_IBL->irradianceShader->SetMat4("u_View", captureViews[i]);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                               GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, s_IBL->irradianceMap, 0);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glBindVertexArray(s_IBL->cubeVAO);
-        glDrawArrays(GL_TRIANGLES, 0, 36);
+      s_IBL->prefilterShader->SetMat4("u_View", captureViews[i]);
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                             GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+                             s_IBL->prefilterMap, mip);
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      glBindVertexArray(s_IBL->cubeVAO);
+      glDrawArrays(GL_TRIANGLES, 0, 36);
     }
+  }
 
-    // Generate prefilter map (128x128, 5 mip levels)
-    if (s_IBL->prefilterMap) glDeleteTextures(1, &s_IBL->prefilterMap);
-    glGenTextures(1, &s_IBL->prefilterMap);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, s_IBL->prefilterMap);
-    for (u32 i = 0; i < 6; i++)
-        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F, 128, 128, 0, GL_RGB, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
-
-    s_IBL->prefilterShader->Bind();
-    s_IBL->prefilterShader->SetInt("u_EnvironmentMap", 0);
-    s_IBL->prefilterShader->SetMat4("u_Projection", captureProjection);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, envCubemap);
-
-    u32 maxMipLevels = 5;
-    for (u32 mip = 0; mip < maxMipLevels; mip++) {
-        u32 mipWidth = static_cast<u32>(128 * std::pow(0.5, mip));
-        u32 mipHeight = mipWidth;
-        glBindRenderbuffer(GL_RENDERBUFFER, s_IBL->captureRBO);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, mipWidth, mipHeight);
-        glViewport(0, 0, mipWidth, mipHeight);
-
-        f32 roughness = static_cast<f32>(mip) / static_cast<f32>(maxMipLevels - 1);
-        s_IBL->prefilterShader->SetFloat("u_Roughness", roughness);
-        for (u32 i = 0; i < 6; i++) {
-            s_IBL->prefilterShader->SetMat4("u_View", captureViews[i]);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                                   GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, s_IBL->prefilterMap, mip);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            glBindVertexArray(s_IBL->cubeVAO);
-            glDrawArrays(GL_TRIANGLES, 0, 36);
-        }
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    s_IBL->ready = true;
-    GINI_INFO("IBL maps generated from cubemap");
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  s_IBL->ready = true;
+  GINI_INFO("IBL maps generated from cubemap");
 }
 
-void IBL::CaptureAtmosphericSky(AtmosphericSky* sky, const Camera3D& camera) {
-    if (!s_IBL || !sky) return;
+void IBL::CaptureAtmosphericSky(AtmosphericSky *sky, const Camera3D &camera) {
+  if (!s_IBL || !sky)
+    return;
 
-    u32 captureSize = 256;
-    if (s_IBL->envCubemap) glDeleteTextures(1, &s_IBL->envCubemap);
-    glGenTextures(1, &s_IBL->envCubemap);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, s_IBL->envCubemap);
-    for (u32 i = 0; i < 6; i++)
-        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F,
-                     captureSize, captureSize, 0, GL_RGB, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+  u32 captureSize = 256;
+  if (s_IBL->envCubemap)
+    glDeleteTextures(1, &s_IBL->envCubemap);
+  glGenTextures(1, &s_IBL->envCubemap);
+  glBindTexture(GL_TEXTURE_CUBE_MAP, s_IBL->envCubemap);
+  for (u32 i = 0; i < 6; i++)
+    glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_RGB16F, captureSize,
+                 captureSize, 0, GL_RGB, GL_FLOAT, nullptr);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+  glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-    Mat4 captureProjection = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
-    Mat4 captureViews[] = {
-        glm::lookAt(Vec3(0), Vec3( 1, 0, 0), Vec3(0,-1, 0)),
-        glm::lookAt(Vec3(0), Vec3(-1, 0, 0), Vec3(0,-1, 0)),
-        glm::lookAt(Vec3(0), Vec3( 0, 1, 0), Vec3(0, 0, 1)),
-        glm::lookAt(Vec3(0), Vec3( 0,-1, 0), Vec3(0, 0,-1)),
-        glm::lookAt(Vec3(0), Vec3( 0, 0, 1), Vec3(0,-1, 0)),
-        glm::lookAt(Vec3(0), Vec3( 0, 0,-1), Vec3(0,-1, 0))
-    };
+  Mat4 captureProjection =
+      glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
+  Mat4 captureViews[] = {glm::lookAt(Vec3(0), Vec3(1, 0, 0), Vec3(0, -1, 0)),
+                         glm::lookAt(Vec3(0), Vec3(-1, 0, 0), Vec3(0, -1, 0)),
+                         glm::lookAt(Vec3(0), Vec3(0, 1, 0), Vec3(0, 0, 1)),
+                         glm::lookAt(Vec3(0), Vec3(0, -1, 0), Vec3(0, 0, -1)),
+                         glm::lookAt(Vec3(0), Vec3(0, 0, 1), Vec3(0, -1, 0)),
+                         glm::lookAt(Vec3(0), Vec3(0, 0, -1), Vec3(0, -1, 0))};
 
-    u32 skyCaptureFBO;
-    glGenFramebuffers(1, &skyCaptureFBO);
-    glBindFramebuffer(GL_FRAMEBUFFER, skyCaptureFBO);
+  u32 skyCaptureFBO;
+  glGenFramebuffers(1, &skyCaptureFBO);
+  glBindFramebuffer(GL_FRAMEBUFFER, skyCaptureFBO);
 
-    u32 depthRBO;
-    glGenRenderbuffers(1, &depthRBO);
-    glBindRenderbuffer(GL_RENDERBUFFER, depthRBO);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, captureSize, captureSize);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, depthRBO);
+  u32 depthRBO;
+  glGenRenderbuffers(1, &depthRBO);
+  glBindRenderbuffer(GL_RENDERBUFFER, depthRBO);
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, captureSize,
+                        captureSize);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                            GL_RENDERBUFFER, depthRBO);
 
-    glViewport(0, 0, captureSize, captureSize);
+  glViewport(0, 0, captureSize, captureSize);
 
-    for (u32 i = 0; i < 6; i++) {
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                               GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, s_IBL->envCubemap, 0);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  for (u32 i = 0; i < 6; i++) {
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                           GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+                           s_IBL->envCubemap, 0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        sky->Render(captureViews[i], captureProjection);
-    }
+    sky->Render(captureViews[i], captureProjection);
+  }
 
-    glDeleteFramebuffers(1, &skyCaptureFBO);
-    glDeleteRenderbuffers(1, &depthRBO);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+  glDeleteFramebuffers(1, &skyCaptureFBO);
+  glDeleteRenderbuffers(1, &depthRBO);
+  glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    GenerateFromCubemap(s_IBL->envCubemap, 256);
+  GenerateFromCubemap(s_IBL->envCubemap, 256);
 }
 
 u32 IBL::GetIrradianceMap() { return s_IBL ? s_IBL->irradianceMap : 0; }
 u32 IBL::GetPrefilterMap() { return s_IBL ? s_IBL->prefilterMap : 0; }
 u32 IBL::GetBRDFLUT() { return s_IBL ? s_IBL->brdfLUT : 0; }
-f32 IBL::GetMaxReflectionLod() { return s_IBL ? s_IBL->maxReflectionLod : 4.0f; }
+f32 IBL::GetMaxReflectionLod() {
+  return s_IBL ? s_IBL->maxReflectionLod : 4.0f;
+}
 
-void IBL::BindIBLTextures(Shader* shader, u32 startTextureUnit) {
-    if (!s_IBL || !shader) return;
+void IBL::BindIBLTextures(Shader *shader, u32 startTextureUnit) {
+  if (!s_IBL || !shader) {
+    GINI_WARN(
+        "IBL::BindIBLTextures: IBL system not initialized or shader is null");
+    return;
+  }
 
-    if (s_IBL->ready && s_IBL->irradianceMap) {
-        glActiveTexture(GL_TEXTURE0 + startTextureUnit);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, s_IBL->irradianceMap);
-        shader->SetInt("u_IrradianceMap", static_cast<i32>(startTextureUnit));
+  if (s_IBL->ready && s_IBL->irradianceMap) {
+    GINI_DEBUG("IBL::BindIBLTextures: Binding IBL textures starting at unit ",
+               startTextureUnit);
 
-        glActiveTexture(GL_TEXTURE0 + startTextureUnit + 1);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, s_IBL->prefilterMap);
-        shader->SetInt("u_PrefilterMap", static_cast<i32>(startTextureUnit + 1));
+    glActiveTexture(GL_TEXTURE0 + startTextureUnit);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, s_IBL->irradianceMap);
+    shader->SetInt("u_IrradianceMap", static_cast<i32>(startTextureUnit));
 
-        glActiveTexture(GL_TEXTURE0 + startTextureUnit + 2);
-        glBindTexture(GL_TEXTURE_2D, s_IBL->brdfLUT);
-        shader->SetInt("u_BRDFLUT", static_cast<i32>(startTextureUnit + 2));
+    glActiveTexture(GL_TEXTURE0 + startTextureUnit + 1);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, s_IBL->prefilterMap);
+    shader->SetInt("u_PrefilterMap", static_cast<i32>(startTextureUnit + 1));
 
-        shader->SetFloat("u_MaxReflectionLod", s_IBL->maxReflectionLod);
-        shader->SetInt("u_HasIBL", 1);
-    } else {
-        shader->SetInt("u_HasIBL", 0);
-    }
+    glActiveTexture(GL_TEXTURE0 + startTextureUnit + 2);
+    glBindTexture(GL_TEXTURE_2D, s_IBL->brdfLUT);
+    shader->SetInt("u_BRDFLUT", static_cast<i32>(startTextureUnit + 2));
+
+    shader->SetFloat("u_MaxReflectionLod", s_IBL->maxReflectionLod);
+    shader->SetInt("u_HasIBL", 1);
+
+    GINI_DEBUG("IBL::BindIBLTextures: IBL textures bound successfully, "
+               "u_HasIBL set to 1");
+  } else {
+    GINI_WARN("IBL::BindIBLTextures: IBL not ready, setting u_HasIBL to 0");
+    shader->SetInt("u_HasIBL", 0);
+  }
 }
 
 bool IBL::IsReady() { return s_IBL && s_IBL->ready; }
+
+// Diligent Engine integration implementations
+void IBL::CreateDiligentIBL() {
+  // Diligent Engine not available, this is a no-op
+  // OpenGL IBL system is already functional
+  s_HasDiligentResources = false;
+}
+
+void IBL::UpdateDiligentIBL() {
+  // Diligent Engine not available, this is a no-op
+  // OpenGL IBL updates are handled by the existing system
+}
+
+void IBL::RegisterWithHybridManager() {
+  // Diligent Engine not available, this is a no-op
+  // OpenGL IBL system is already functional
+}
 
 } // namespace Gini

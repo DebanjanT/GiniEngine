@@ -18,6 +18,8 @@ Release/
 RelWithDebInfo/
 MinSizeRel/
 .cache
+Hazel-2024.1
+
 
 # ===========================================
 # CMake generated files

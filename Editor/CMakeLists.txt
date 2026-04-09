@@ -57,6 +57,13 @@ target_link_libraries(GiniEditor PRIVATE
     GiniEngine
 )
 
+# Add runtime path for shared library on Unix systems
+if(UNIX AND NOT APPLE)
+    target_link_options(GiniEditor PRIVATE -Wl,-rpath,'$ORIGIN')
+elseif(APPLE)
+    target_link_options(GiniEditor PRIVATE -Wl,-rpath,'@executable_path')
+endif()
+
 # Platform-specific link dependencies for native file dialogs
 if(APPLE)
     target_link_libraries(GiniEditor PRIVATE "-framework Cocoa")
@@ -69,6 +76,27 @@ set_target_properties(GiniEditor PROPERTIES
     CXX_STANDARD_REQUIRED ON
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
+
+# Copy shared engine library to editor output directory
+if(WIN32)
+    add_custom_command(TARGET GiniEditor POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:GiniEngine>
+        $<TARGET_FILE_DIR:GiniEditor>
+    )
+elseif(APPLE)
+    add_custom_command(TARGET GiniEditor POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:GiniEngine>
+        $<TARGET_FILE_DIR:GiniEditor>
+    )
+else()
+    add_custom_command(TARGET GiniEditor POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:GiniEngine>
+        $<TARGET_FILE_DIR:GiniEditor>
+    )
+endif()
 
 # Copy Editor Assets (fonts, etc.)
 add_custom_command(TARGET GiniEditor POST_BUILD

@@ -6,6 +6,9 @@
 
 namespace Gini {
 
+// Forward declarations for Diligent Engine integration
+class DiligentImGui;
+
 class ImGuiLayer {
 public:
   static void Init();
@@ -37,10 +40,17 @@ public:
   static void SetFontSize(float size);
   static void ReloadFonts(float size);
 
+  // Diligent Engine integration methods
+  static void CreateDiligentImGui();
+  static void UpdateDiligentImGui();
+  static void RegisterWithHybridManager();
+  static bool HasDiligentResources() { return s_HasDiligentResources; }
 
 private:
   static bool s_Initialized;
   static bool s_BlockEvents;
+  static bool s_HasDiligentResources;
+
 public:
   static float m_fontSize;
   static float m_pendingFontSize;

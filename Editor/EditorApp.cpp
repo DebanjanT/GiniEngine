@@ -6,8 +6,8 @@
 #include "Renderer/ModelCache.h"
 #include "Renderer/PostProcess.h"
 #include "Renderer/Renderer3D.h"
-#include "Renderer/ShadowMap.h"
 #include "Renderer/SSAO.h"
+#include "Renderer/ShadowMap.h"
 #include "Scene/SceneSerializer.h"
 #include "UI/ImGuiLayer.h"
 #include "Utils/FileDialog.h"
@@ -54,10 +54,8 @@ void EditorApp::OnInit() {
   FramebufferSpec hdrSpec;
   hdrSpec.width = 1280;
   hdrSpec.height = 720;
-  hdrSpec.colorAttachments = {
-      {FramebufferTextureFormat::RGBA16F},
-      {FramebufferTextureFormat::RGB16F}
-  };
+  hdrSpec.colorAttachments = {{FramebufferTextureFormat::RGBA16F},
+                              {FramebufferTextureFormat::RGB16F}};
   m_HDRFramebuffer = Framebuffer::Create(hdrSpec);
 
   // Create final LDR framebuffer for ImGui viewport display
@@ -104,7 +102,8 @@ void EditorApp::OnInit() {
   m_AssetBrowserPanel.SetVisible(true);
   m_WeatherPanel.SetVisible(true);
 
-  // No default terrain -- user creates/links terrain via Scene Properties or Terrain Editor
+  // No default terrain -- user creates/links terrain via Scene Properties or
+  // Terrain Editor
   m_Terrain = nullptr;
 
   // Project launcher will be shown automatically (m_IsOpen = true by default)
@@ -175,13 +174,14 @@ void EditorApp::OnUpdate(f32 deltaTime) {
 void EditorApp::OnRender() {
   // -- Shadow pass --
   if (ShadowMap::IsInitialized()) {
-    auto& lightMgr = LightManager::Get();
+    auto &lightMgr = LightManager::Get();
     if (lightMgr.HasDirectionalLight()) {
-      ShadowMap::BeginShadowPass(*m_EditorCamera, lightMgr.GetDirectionalLight());
+      ShadowMap::BeginShadowPass(*m_EditorCamera,
+                                 lightMgr.GetDirectionalLight());
 
       auto depthShader = ShadowMap::GetDepthShader();
       if (depthShader) {
-        const auto& matrices = ShadowMap::GetLightSpaceMatrices();
+        const auto &matrices = ShadowMap::GetLightSpaceMatrices();
         for (u32 c = 0; c < static_cast<u32>(matrices.size()); c++) {
           glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
                                     ShadowMap::GetShadowMapTexture(), 0, c);
@@ -190,36 +190,64 @@ void EditorApp::OnRender() {
           depthShader->SetMat4("u_LightSpaceMatrix", matrices[c]);
 
           if (m_Terrain) {
-            depthShader->SetMat4("u_Model", glm::translate(Mat4(1.0f), m_Terrain->GetWorldPosition()));
+            depthShader->SetMat4(
+                "u_Model",
+                glm::translate(Mat4(1.0f), m_Terrain->GetWorldPosition()));
           }
 
           if (m_ActiveScene) {
             auto &shadowWorld = m_ActiveScene->GetWorld();
-            auto shadowView = shadowWorld.GetRegistry().view<TransformComponent, MeshComponent>();
+            auto shadowView = shadowWorld.GetRegistry()
+                                  .view<TransformComponent, MeshComponent>();
             for (auto ent : shadowView) {
               auto &mc = shadowView.get<MeshComponent>(ent);
-              if (!mc.castShadows) continue;
+              if (!mc.castShadows)
+                continue;
               auto &tc = shadowView.get<TransformComponent>(ent);
               Mat4 modelMat = tc.GetTransform();
               depthShader->SetMat4("u_Model", modelMat);
 
               if (mc.meshType == MeshType::Custom && !mc.modelPath.empty()) {
-                auto model = ModelCache::Get().Load(mc.modelPath);
-                if (model) {
-                  for (const auto &mesh : model->GetMeshes()) {
+                auto model3D = ModelCache::Get().LoadModel3D(mc.modelPath);
+                if (model3D) {
+                  GINI_DEBUG("ShadowPass: Rendering improved Model3D '",
+                             mc.modelPath, "' with ",
+                             model3D->GetMeshes().size(), " meshes");
+                  for (const auto &mesh : model3D->GetMeshes()) {
                     mesh->Draw();
+                  }
+                } else {
+                  GINI_WARN("ShadowPass: Failed to load Model3D, falling back "
+                            "to legacy model '",
+                            mc.modelPath, "'");
+                  // Fallback to legacy model system
+                  auto legacyModel = ModelCache::Get().Load(mc.modelPath);
+                  if (legacyModel) {
+                    for (const auto &mesh : legacyModel->GetMeshes()) {
+                      mesh->Draw();
+                    }
                   }
                 }
               } else {
                 Ref<Mesh> primMesh;
                 switch (mc.meshType) {
-                case MeshType::Cube: primMesh = Mesh::CreateCube(); break;
-                case MeshType::Sphere: primMesh = Mesh::CreateSphere(); break;
-                case MeshType::Plane: primMesh = Mesh::CreatePlane(); break;
-                case MeshType::Cylinder: primMesh = Mesh::CreateCylinder(); break;
-                default: break;
+                case MeshType::Cube:
+                  primMesh = Mesh::CreateCube();
+                  break;
+                case MeshType::Sphere:
+                  primMesh = Mesh::CreateSphere();
+                  break;
+                case MeshType::Plane:
+                  primMesh = Mesh::CreatePlane();
+                  break;
+                case MeshType::Cylinder:
+                  primMesh = Mesh::CreateCylinder();
+                  break;
+                default:
+                  break;
                 }
-                if (primMesh) primMesh->Draw();
+                if (primMesh)
+                  primMesh->Draw();
               }
             }
           }
@@ -231,9 +259,11 @@ void EditorApp::OnRender() {
 
   // -- IBL generation (once or when sky changes) --
   static bool iblGenerated = false;
-  if (!iblGenerated && m_ActiveScene && m_ActiveScene->IsAtmosphericSkyEnabled() &&
+  if (!iblGenerated && m_ActiveScene &&
+      m_ActiveScene->IsAtmosphericSkyEnabled() &&
       m_ActiveScene->HasAtmosphericSky()) {
-    IBL::CaptureAtmosphericSky(m_ActiveScene->GetAtmosphericSky().get(), *m_EditorCamera);
+    IBL::CaptureAtmosphericSky(m_ActiveScene->GetAtmosphericSky().get(),
+                               *m_EditorCamera);
     iblGenerated = true;
   }
 
@@ -268,6 +298,28 @@ void EditorApp::OnRender() {
   }
 
   if (m_ActiveScene) {
+    // Update LightManager with scene lights
+    auto &world = m_ActiveScene->GetWorld();
+    auto &lightMgr = LightManager::Get();
+    lightMgr.Clear();
+
+    auto lightView =
+        world.GetRegistry().view<TransformComponent, LightComponent>();
+    for (auto entity : lightView) {
+      auto &transform = lightView.get<TransformComponent>(entity);
+      auto &light = lightView.get<LightComponent>(entity);
+
+      if (light.type == 0) { // Directional light
+        DirectionalLight dirLight;
+        Mat4 transformMat = transform.GetTransform();
+        dirLight.direction =
+            glm::normalize(Vec3(transformMat * Vec4(0.0f, 0.0f, -1.0f, 0.0f)));
+        dirLight.color = light.color;
+        dirLight.intensity = light.intensity;
+        lightMgr.SetDirectionalLight(dirLight);
+      }
+    }
+
     // Draw grid
     for (int i = -10; i <= 10; i++) {
       Color gridColor =
@@ -276,15 +328,11 @@ void EditorApp::OnRender() {
       Renderer3D::DrawLine(Vec3(-10, 0, i), Vec3(10, 0, i), gridColor);
     }
     // Draw axis lines
-    Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(5, 0, 0),
-                         Color(1.0f, 0.2f, 0.2f));
-    Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(0, 5, 0),
-                         Color(0.2f, 1.0f, 0.2f));
-    Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(0, 0, 5),
-                         Color(0.2f, 0.2f, 1.0f));
+    Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(5, 0, 0), Color(1.0f, 0.2f, 0.2f));
+    Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(0, 5, 0), Color(0.2f, 1.0f, 0.2f));
+    Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(0, 0, 5), Color(0.2f, 0.2f, 1.0f));
 
     // Draw entities using MeshComponent when available
-    auto &world = m_ActiveScene->GetWorld();
     auto view = world.GetRegistry().view<TransformComponent>();
     int entityIndex = 0;
     for (auto entity : view) {
@@ -309,7 +357,8 @@ void EditorApp::OnRender() {
           if (!matComp.metallicTexturePath.empty())
             mat3d.metallicMap = Texture2D::Create(matComp.metallicTexturePath);
           if (!matComp.roughnessTexturePath.empty())
-            mat3d.roughnessMap = Texture2D::Create(matComp.roughnessTexturePath);
+            mat3d.roughnessMap =
+                Texture2D::Create(matComp.roughnessTexturePath);
           if (!matComp.aoTexturePath.empty())
             mat3d.aoMap = Texture2D::Create(matComp.aoTexturePath);
         }
@@ -317,19 +366,37 @@ void EditorApp::OnRender() {
         switch (mc.meshType) {
         case MeshType::Custom: {
           if (!mc.modelPath.empty()) {
-            auto model = ModelCache::Get().Load(mc.modelPath);
-            if (model) {
+            auto model3D = ModelCache::Get().LoadModel3D(mc.modelPath);
+            if (model3D) {
               if (world.HasComponent<AnimatorComponent3D>(entity)) {
                 auto &ac = world.GetComponent<AnimatorComponent3D>(entity);
                 if (ac.animator) {
-                  Renderer3D::DrawSkinnedModel(
-                      model, modelMatrix,
-                      ac.animator->GetFinalBoneMatrices());
+                  // TODO: Implement skinned Model3D rendering
+                  // Renderer3D::DrawSkinnedModel3D(model3D, modelMatrix,
+                  // ac.animator->GetFinalBoneMatrices());
+                  Renderer3D::DrawModel3D(model3D, modelMatrix);
                 } else {
-                  Renderer3D::DrawModel(model, modelMatrix);
+                  Renderer3D::DrawModel3D(model3D, modelMatrix);
                 }
               } else {
-                Renderer3D::DrawModel(model, modelMatrix);
+                Renderer3D::DrawModel3D(model3D, modelMatrix);
+              }
+            } else {
+              // Fallback to legacy model system
+              auto legacyModel = ModelCache::Get().Load(mc.modelPath);
+              if (legacyModel) {
+                if (world.HasComponent<AnimatorComponent3D>(entity)) {
+                  auto &ac = world.GetComponent<AnimatorComponent3D>(entity);
+                  if (ac.animator) {
+                    Renderer3D::DrawSkinnedModel(
+                        legacyModel, modelMatrix,
+                        ac.animator->GetFinalBoneMatrices());
+                  } else {
+                    Renderer3D::DrawModel(legacyModel, modelMatrix);
+                  }
+                } else {
+                  Renderer3D::DrawModel(legacyModel, modelMatrix);
+                }
               }
             }
           }
@@ -356,9 +423,15 @@ void EditorApp::OnRender() {
       } else {
         Color cubeColor;
         switch (entityIndex % 3) {
-        case 0: cubeColor = Color(0.8f, 0.3f, 0.3f); break;
-        case 1: cubeColor = Color(0.3f, 0.8f, 0.3f); break;
-        case 2: cubeColor = Color(0.3f, 0.3f, 0.8f); break;
+        case 0:
+          cubeColor = Color(0.8f, 0.3f, 0.3f);
+          break;
+        case 1:
+          cubeColor = Color(0.3f, 0.8f, 0.3f);
+          break;
+        case 2:
+          cubeColor = Color(0.3f, 0.3f, 0.8f);
+          break;
         }
         Renderer3D::DrawCube(transform.position, transform.scale, cubeColor);
       }
@@ -368,29 +441,41 @@ void EditorApp::OnRender() {
         Vec3 p = transform.position;
         Color wireColor(1.0f, 0.8f, 0.0f);
         Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, -halfSize.z),
-                             p + Vec3(halfSize.x, -halfSize.y, -halfSize.z), wireColor);
+                             p + Vec3(halfSize.x, -halfSize.y, -halfSize.z),
+                             wireColor);
         Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, -halfSize.z),
-                             p + Vec3(halfSize.x, -halfSize.y, halfSize.z), wireColor);
+                             p + Vec3(halfSize.x, -halfSize.y, halfSize.z),
+                             wireColor);
         Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, halfSize.z),
-                             p + Vec3(-halfSize.x, -halfSize.y, halfSize.z), wireColor);
+                             p + Vec3(-halfSize.x, -halfSize.y, halfSize.z),
+                             wireColor);
         Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, halfSize.z),
-                             p + Vec3(-halfSize.x, -halfSize.y, -halfSize.z), wireColor);
+                             p + Vec3(-halfSize.x, -halfSize.y, -halfSize.z),
+                             wireColor);
         Renderer3D::DrawLine(p + Vec3(-halfSize.x, halfSize.y, -halfSize.z),
-                             p + Vec3(halfSize.x, halfSize.y, -halfSize.z), wireColor);
+                             p + Vec3(halfSize.x, halfSize.y, -halfSize.z),
+                             wireColor);
         Renderer3D::DrawLine(p + Vec3(halfSize.x, halfSize.y, -halfSize.z),
-                             p + Vec3(halfSize.x, halfSize.y, halfSize.z), wireColor);
+                             p + Vec3(halfSize.x, halfSize.y, halfSize.z),
+                             wireColor);
         Renderer3D::DrawLine(p + Vec3(halfSize.x, halfSize.y, halfSize.z),
-                             p + Vec3(-halfSize.x, halfSize.y, halfSize.z), wireColor);
+                             p + Vec3(-halfSize.x, halfSize.y, halfSize.z),
+                             wireColor);
         Renderer3D::DrawLine(p + Vec3(-halfSize.x, halfSize.y, halfSize.z),
-                             p + Vec3(-halfSize.x, halfSize.y, -halfSize.z), wireColor);
+                             p + Vec3(-halfSize.x, halfSize.y, -halfSize.z),
+                             wireColor);
         Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, -halfSize.z),
-                             p + Vec3(-halfSize.x, halfSize.y, -halfSize.z), wireColor);
+                             p + Vec3(-halfSize.x, halfSize.y, -halfSize.z),
+                             wireColor);
         Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, -halfSize.z),
-                             p + Vec3(halfSize.x, halfSize.y, -halfSize.z), wireColor);
+                             p + Vec3(halfSize.x, halfSize.y, -halfSize.z),
+                             wireColor);
         Renderer3D::DrawLine(p + Vec3(halfSize.x, -halfSize.y, halfSize.z),
-                             p + Vec3(halfSize.x, halfSize.y, halfSize.z), wireColor);
+                             p + Vec3(halfSize.x, halfSize.y, halfSize.z),
+                             wireColor);
         Renderer3D::DrawLine(p + Vec3(-halfSize.x, -halfSize.y, halfSize.z),
-                             p + Vec3(-halfSize.x, halfSize.y, halfSize.z), wireColor);
+                             p + Vec3(-halfSize.x, halfSize.y, halfSize.z),
+                             wireColor);
       }
 
       entityIndex++;
@@ -417,7 +502,8 @@ void EditorApp::OnRender() {
   m_Framebuffer->Bind();
   Renderer3D::SetViewport(0, 0, static_cast<u32>(m_ViewportSize.x),
                           static_cast<u32>(m_ViewportSize.y));
-  PostProcess::Resolve(m_HDRFramebuffer->GetColorAttachment(0), ssaoTexture, 1.0f, 2.2f);
+  PostProcess::Resolve(m_HDRFramebuffer->GetColorAttachment(0), ssaoTexture,
+                       1.0f, 2.2f);
   m_Framebuffer->Unbind();
 
   // Render ImGui
@@ -587,15 +673,16 @@ void EditorApp::SetupDockspace() {
 
       // Step 2: carve left panel (18%) for hierarchy
       ImGuiID dockLeft, dockCenter;
-      ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Left, 0.18f,
-                                  &dockLeft, &dockCenter);
+      ImGui::DockBuilderSplitNode(dockMain, ImGuiDir_Left, 0.18f, &dockLeft,
+                                  &dockCenter);
 
       // Step 3: carve right panel (22%) for properties
       ImGuiID dockRight;
-      ImGui::DockBuilderSplitNode(dockCenter, ImGuiDir_Right, 0.22f,
-                                  &dockRight, &dockCenter);
+      ImGui::DockBuilderSplitNode(dockCenter, ImGuiDir_Right, 0.22f, &dockRight,
+                                  &dockCenter);
 
-      // Step 4: split bottom into left (console/stats) and right (asset browser)
+      // Step 4: split bottom into left (console/stats) and right (asset
+      // browser)
       ImGuiID dockBottomLeft, dockBottomRight;
       ImGui::DockBuilderSplitNode(dockBottom, ImGuiDir_Left, 0.35f,
                                   &dockBottomLeft, &dockBottomRight);
@@ -644,10 +731,13 @@ void EditorApp::DrawMenuBar() {
     }
 
     if (ImGui::BeginMenu("Edit")) {
-      if (ImGui::MenuItem("Undo", "Ctrl+Z", false, false)) {}
-      if (ImGui::MenuItem("Redo", "Ctrl+Y", false, false)) {}
+      if (ImGui::MenuItem("Undo", "Ctrl+Z", false, false)) {
+      }
+      if (ImGui::MenuItem("Redo", "Ctrl+Y", false, false)) {
+      }
       ImGui::Separator();
-      if (ImGui::MenuItem("Preferences", nullptr, false, false)) {}
+      if (ImGui::MenuItem("Preferences", nullptr, false, false)) {
+      }
       ImGui::EndMenu();
     }
 
@@ -696,21 +786,24 @@ void EditorApp::DrawMenuBar() {
         if (ImGui::MenuItem("Directional Light")) {
           if (m_ActiveScene) {
             auto e = m_ActiveScene->CreateEntity("Directional Light");
-            auto &lc = m_ActiveScene->GetWorld().AddComponent<LightComponent>(e);
+            auto &lc =
+                m_ActiveScene->GetWorld().AddComponent<LightComponent>(e);
             lc.type = 0;
           }
         }
         if (ImGui::MenuItem("Point Light")) {
           if (m_ActiveScene) {
             auto e = m_ActiveScene->CreateEntity("Point Light");
-            auto &lc = m_ActiveScene->GetWorld().AddComponent<LightComponent>(e);
+            auto &lc =
+                m_ActiveScene->GetWorld().AddComponent<LightComponent>(e);
             lc.type = 1;
           }
         }
         if (ImGui::MenuItem("Spot Light")) {
           if (m_ActiveScene) {
             auto e = m_ActiveScene->CreateEntity("Spot Light");
-            auto &lc = m_ActiveScene->GetWorld().AddComponent<LightComponent>(e);
+            auto &lc =
+                m_ActiveScene->GetWorld().AddComponent<LightComponent>(e);
             lc.type = 2;
           }
         }
@@ -727,7 +820,8 @@ void EditorApp::DrawMenuBar() {
 
     if (ImGui::BeginMenu("Tools")) {
       if (ImGui::MenuItem("Import Model...")) {
-        auto path = FileDialog::OpenFile({{"3D Models", "fbx,obj,gltf,glb,dae"}});
+        auto path =
+            FileDialog::OpenFile({{"3D Models", "fbx,obj,gltf,glb,dae"}});
         if (!path.empty()) {
           m_ModelImportDialog.Open(path);
         }
@@ -765,7 +859,8 @@ void EditorApp::DrawMenuBar() {
     }
 
     if (ImGui::BeginMenu("Help")) {
-      if (ImGui::MenuItem("About Gini Engine")) {}
+      if (ImGui::MenuItem("About Gini Engine")) {
+      }
       ImGui::Separator();
       bool canIncrease = (ImGuiLayer::m_fontSize + 2.0f) < 23.0f;
       bool canDecrease = (ImGuiLayer::m_fontSize - 2.0f) > 10.0f;
@@ -799,20 +894,23 @@ void EditorApp::DrawToolbar() {
 
   ImGui::Begin("##toolbar", nullptr,
                ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoScrollbar |
-                   ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoDocking |
-                   ImGuiWindowFlags_NoMove);
+                   ImGuiWindowFlags_NoScrollWithMouse |
+                   ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoMove);
 
   float btnH = 24.0f;
   float btnW = 28.0f;
 
-  auto ToolButton = [&](const char* label, bool selected) -> bool {
+  auto ToolButton = [&](const char *label, bool selected) -> bool {
     if (selected) {
-      ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.56f, 0.72f, 0.40f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.18f, 0.56f, 0.72f, 0.55f));
+      ImGui::PushStyleColor(ImGuiCol_Button,
+                            ImVec4(0.18f, 0.56f, 0.72f, 0.40f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                            ImVec4(0.18f, 0.56f, 0.72f, 0.55f));
       ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.60f, 0.88f, 1.0f, 1.0f));
     } else {
       ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.24f, 0.27f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                            ImVec4(0.24f, 0.24f, 0.27f, 1.0f));
       ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.70f, 0.70f, 0.72f, 1.0f));
     }
     bool clicked = ImGui::Button(label, ImVec2(btnW, btnH));
@@ -851,18 +949,23 @@ void EditorApp::DrawToolbar() {
 
   if (isPlaying) {
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.65f, 0.22f, 0.22f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.75f, 0.30f, 0.30f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                          ImVec4(0.75f, 0.30f, 0.30f, 1.0f));
   } else {
     ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.18f, 0.56f, 0.72f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.24f, 0.65f, 0.82f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                          ImVec4(0.24f, 0.65f, 0.82f, 1.0f));
   }
-  if (ImGui::Button(isPlaying ? "  Stop  " : "  Play  ", ImVec2(playBtnW, btnH))) {
+  if (ImGui::Button(isPlaying ? "  Stop  " : "  Play  ",
+                    ImVec2(playBtnW, btnH))) {
     if (m_SceneState == SceneState::Edit) {
       m_SceneState = SceneState::Play;
-      if (m_ActiveScene) m_ActiveScene->OnStart();
+      if (m_ActiveScene)
+        m_ActiveScene->OnStart();
     } else {
       m_SceneState = SceneState::Edit;
-      if (m_ActiveScene) m_ActiveScene->OnStop();
+      if (m_ActiveScene)
+        m_ActiveScene->OnStop();
     }
   }
   ImGui::PopStyleColor(2);
@@ -889,7 +992,7 @@ void EditorApp::DrawViewport() {
                           static_cast<u32>(m_ViewportSize.y));
     if (SSAO::IsInitialized()) {
       SSAO::Resize(static_cast<u32>(m_ViewportSize.x),
-                    static_cast<u32>(m_ViewportSize.y));
+                   static_cast<u32>(m_ViewportSize.y));
     }
     m_EditorCamera->SetAspectRatio(m_ViewportSize.x / m_ViewportSize.y);
   }
@@ -908,7 +1011,8 @@ void EditorApp::DrawViewport() {
       if (m_ActiveScene) {
         std::filesystem::path p(meshPath);
         std::string ext = p.extension().string();
-        for (auto &c : ext) c = static_cast<char>(std::tolower(c));
+        for (auto &c : ext)
+          c = static_cast<char>(std::tolower(c));
 
         std::string modelFilePath = meshPath;
         if (ext == ".gmesh") {
@@ -919,7 +1023,8 @@ void EditorApp::DrawViewport() {
                   (p.parent_path() / gmesh["SourceFile"].as<std::string>())
                       .string();
             }
-          } catch (...) {}
+          } catch (...) {
+          }
         }
 
         std::string name = p.stem().string();
@@ -940,7 +1045,8 @@ void EditorApp::DrawViewport() {
       std::string assetPath(static_cast<const char *>(payload->Data));
       std::filesystem::path p(assetPath);
       std::string ext = p.extension().string();
-      for (auto &c : ext) c = static_cast<char>(std::tolower(c));
+      for (auto &c : ext)
+        c = static_cast<char>(std::tolower(c));
       if (ext == ".fbx" || ext == ".obj" || ext == ".gltf" || ext == ".glb" ||
           ext == ".dae") {
         if (m_ActiveScene) {
@@ -968,24 +1074,27 @@ void EditorApp::DrawViewport() {
 
   // Viewport overlay (top-left: gizmo mode / camera info)
   {
-    ImDrawList* dl = ImGui::GetWindowDrawList();
+    ImDrawList *dl = ImGui::GetWindowDrawList();
     ImVec2 overlayPos(imagePos.x + 8, imagePos.y + 8);
     ImU32 bgCol = IM_COL32(0, 0, 0, 140);
     ImU32 textCol = IM_COL32(200, 200, 205, 220);
 
-    const char* gizmoName = "Move";
-    if (m_GizmoOperation == GizmoOperation::Rotate) gizmoName = "Rotate";
-    else if (m_GizmoOperation == GizmoOperation::Scale) gizmoName = "Scale";
+    const char *gizmoName = "Move";
+    if (m_GizmoOperation == GizmoOperation::Rotate)
+      gizmoName = "Rotate";
+    else if (m_GizmoOperation == GizmoOperation::Scale)
+      gizmoName = "Scale";
 
     Vec3 camPos = m_EditorCamera->GetPosition();
     char overlay[128];
-    snprintf(overlay, sizeof(overlay), "%s | Cam: %.1f, %.1f, %.1f",
-             gizmoName, camPos.x, camPos.y, camPos.z);
+    snprintf(overlay, sizeof(overlay), "%s | Cam: %.1f, %.1f, %.1f", gizmoName,
+             camPos.x, camPos.y, camPos.z);
 
     ImVec2 textSize = ImGui::CalcTextSize(overlay);
-    dl->AddRectFilled(overlayPos,
-                      ImVec2(overlayPos.x + textSize.x + 12, overlayPos.y + textSize.y + 8),
-                      bgCol, 4.0f);
+    dl->AddRectFilled(
+        overlayPos,
+        ImVec2(overlayPos.x + textSize.x + 12, overlayPos.y + textSize.y + 8),
+        bgCol, 4.0f);
     dl->AddText(ImVec2(overlayPos.x + 6, overlayPos.y + 4), textCol, overlay);
   }
 
@@ -1081,7 +1190,23 @@ void EditorApp::NewScene() {
   auto &t3 = m_ActiveScene->GetWorld().GetComponent<TransformComponent>(cube3);
   t3.position = Vec3(3.0f, 0.5f, 0.0f);
 
-  GINI_INFO("New scene created with 3 cubes");
+  // Add directional light for shadow casting and proper lighting
+  auto directionalLight = m_ActiveScene->CreateEntity("Directional Light");
+  auto &lightTransform =
+      m_ActiveScene->GetWorld().GetComponent<TransformComponent>(
+          directionalLight);
+  lightTransform.position = Vec3(5.0f, 10.0f, 5.0f);
+  lightTransform.rotation =
+      Vec3(-45.0f, -45.0f, 0.0f); // Point downward at 45 degrees
+
+  auto &lightComponent =
+      m_ActiveScene->GetWorld().AddComponent<LightComponent>(directionalLight);
+  lightComponent.type = 0;                        // Directional light
+  lightComponent.color = Vec3(1.0f, 0.95f, 0.8f); // Warm sunlight color
+  lightComponent.intensity = 2.0f; // Stronger intensity for better visibility
+  lightComponent.castShadows = true;
+
+  GINI_INFO("New scene created with 3 cubes and directional light");
 }
 
 void EditorApp::OpenScene() {

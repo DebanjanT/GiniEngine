@@ -454,8 +454,11 @@ void main() {
     
     // Ensure base albedo is always visible to prevent white/gray appearance
     if (u_HasAlbedoMap == 1) {
-        // Add a small amount of base albedo to ensure visibility
-        color = mix(color, albedo * 0.5, 0.3);
+        // Stronger albedo visibility fix to prevent white/gray appearance
+        color = mix(color, albedo * 0.8, 0.5);
+    } else {
+        // For materials without albedo textures, ensure base color is visible
+        color = mix(color, u_Material_albedo * 0.6, 0.4);
     }
 
     FragColor = vec4(color, 1.0);
@@ -890,6 +893,145 @@ void Renderer3D::DrawModel(const Ref<Model> &model, const Vec3 &position,
   transform = glm::scale(transform, scale);
 
   DrawModel(model, transform);
+}
+
+void Renderer3D::DrawModel3D(const Ref<Model3D> &model, const Mat4 &transform) {
+  if (!model || !model->IsValid()) {
+    return;
+  }
+
+  GINI_DEBUG("Drawing improved Model3D with {} meshes",
+             model->GetMeshes().size());
+
+  // Save current OpenGL state
+  bool wasWireframe = s_Data->wireframeMode;
+  bool wasCullingEnabled = glIsEnabled(GL_CULL_FACE);
+  GLint currentCullFace, currentFrontFace;
+  if (wasCullingEnabled) {
+    glGetIntegerv(GL_CULL_FACE_MODE, &currentCullFace);
+    glGetIntegerv(GL_FRONT_FACE, &currentFrontFace);
+  }
+
+  // Set appropriate state for model rendering
+  glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_BACK);
+  glFrontFace(GL_CCW);
+
+  // Draw each mesh in the model
+  for (const auto &mesh : model->GetMeshes()) {
+    if (!mesh) {
+      continue;
+    }
+
+    // Get the material for this mesh
+    Ref<MaterialAsset> materialAsset = mesh->GetMaterial();
+    if (!materialAsset) {
+      // Use default material if no material is assigned
+      static Material3D defaultMaterial;
+      defaultMaterial.name = "Default Material";
+      defaultMaterial.albedo = glm::vec3(0.8f, 0.8f, 0.8f);
+      defaultMaterial.metallic = 0.0f;
+      defaultMaterial.roughness = 0.5f;
+      defaultMaterial.ao = 1.0f;
+      defaultMaterial.emissive = glm::vec3(0.0f);
+
+      // Convert Vertex to Vertex3D and Index to u32 for Mesh compatibility
+      std::vector<Vertex3D> vertices3d;
+      vertices3d.reserve(mesh->GetVertices().size());
+      for (const auto &vertex : mesh->GetVertices()) {
+        Vertex3D v3d;
+        v3d.position = vertex.Position;
+        v3d.normal = vertex.Normal;
+        v3d.texCoords = vertex.Texcoord;
+        v3d.tangent = vertex.Tangent;
+        v3d.bitangent = vertex.Binormal;
+        vertices3d.push_back(v3d);
+      }
+
+      std::vector<u32> indices32;
+      indices32.reserve(mesh->GetIndices().size() * 3);
+      for (const auto &index : mesh->GetIndices()) {
+        indices32.push_back(index.V1);
+        indices32.push_back(index.V2);
+        indices32.push_back(index.V3);
+      }
+
+      auto tempMesh = CreateRef<Mesh>(vertices3d, indices32);
+      DrawMesh(tempMesh, transform, defaultMaterial);
+      s_Data->stats.meshesDrawn++;
+      continue;
+    }
+
+    // Convert PBRMaterial to Material3D for rendering
+    const PBRMaterial &pbrMat = materialAsset->GetMaterial();
+    Material3D mat3d;
+    mat3d.name = "PBR Material";
+
+    // Copy material properties (using correct field names)
+    mat3d.albedo = pbrMat.Albedo;
+    mat3d.metallic = pbrMat.Metallic;
+    mat3d.roughness = pbrMat.Roughness;
+    mat3d.ao = pbrMat.AO;
+    mat3d.emissive = pbrMat.Emissive;
+
+    // Copy texture maps (using Ref<Texture2D> assignment)
+    if (pbrMat.AlbedoMap)
+      mat3d.albedoMap = std::static_pointer_cast<Texture2D>(pbrMat.AlbedoMap);
+    if (pbrMat.NormalMap)
+      mat3d.normalMap = std::static_pointer_cast<Texture2D>(pbrMat.NormalMap);
+    if (pbrMat.MetallicMap)
+      mat3d.metallicMap =
+          std::static_pointer_cast<Texture2D>(pbrMat.MetallicMap);
+    if (pbrMat.RoughnessMap)
+      mat3d.roughnessMap =
+          std::static_pointer_cast<Texture2D>(pbrMat.RoughnessMap);
+    if (pbrMat.AOMap)
+      mat3d.aoMap = std::static_pointer_cast<Texture2D>(pbrMat.AOMap);
+    if (pbrMat.EmissiveMap)
+      mat3d.emissiveMap =
+          std::static_pointer_cast<Texture2D>(pbrMat.EmissiveMap);
+
+    // Convert Vertex to Vertex3D and Index to u32 for Mesh compatibility
+    std::vector<Vertex3D> vertices3d;
+    vertices3d.reserve(mesh->GetVertices().size());
+    for (const auto &vertex : mesh->GetVertices()) {
+      Vertex3D v3d;
+      v3d.position = vertex.Position;
+      v3d.normal = vertex.Normal;
+      v3d.texCoords = vertex.Texcoord;
+      v3d.tangent = vertex.Tangent;
+      v3d.bitangent = vertex.Binormal;
+      vertices3d.push_back(v3d);
+    }
+
+    std::vector<u32> indices32;
+    indices32.reserve(mesh->GetIndices().size() * 3);
+    for (const auto &index : mesh->GetIndices()) {
+      indices32.push_back(index.V1);
+      indices32.push_back(index.V2);
+      indices32.push_back(index.V3);
+    }
+
+    auto tempMesh = CreateRef<Mesh>(vertices3d, indices32);
+    DrawMesh(tempMesh, transform, mat3d);
+    s_Data->stats.meshesDrawn++;
+  }
+
+  // Restore OpenGL state
+  if (wasWireframe) {
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+  } else {
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+  }
+
+  if (wasCullingEnabled) {
+    glEnable(GL_CULL_FACE);
+    glCullFace(currentCullFace);
+    glFrontFace(currentFrontFace);
+  } else {
+    glDisable(GL_CULL_FACE);
+  }
 }
 
 void Renderer3D::DrawCube(const Vec3 &position, const Vec3 &size,

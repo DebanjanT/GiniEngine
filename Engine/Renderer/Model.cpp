@@ -65,14 +65,16 @@ bool Model::LoadOBJ(const std::string &filepath) {
     Material3D material;
     aiMaterial *aiMat = scene->mMaterials[i];
 
-    // Set reasonable defaults for PBR properties
+    // Set improved defaults for PBR properties with better lighting response
     material.albedo =
         Vec3(1.0f, 1.0f,
              1.0f); // Pure white base color - texture will provide actual color
     material.diffuse = material.albedo;
-    material.metallic = 0.1f;  // Small metallic value for some reflection
-    material.roughness = 0.3f; // Lower roughness for more reflection
-    material.ao = 1.0f; // Full ambient occlusion to prevent flat appearance
+    material.metallic =
+        0.0f; // Non-metallic by default for better lighting response
+    material.roughness = 0.5f; // Balanced roughness for realistic appearance
+    material.ao =
+        0.8f; // Slightly reduced ambient occlusion for better visibility
     material.emissive = Vec3(0.0f, 0.0f, 0.0f);
 
     aiString name;

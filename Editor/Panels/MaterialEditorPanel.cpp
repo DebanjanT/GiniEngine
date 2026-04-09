@@ -711,35 +711,32 @@ void MaterialEditorPanel::DrawNodeInspector() {
     ImGui::Separator();
     ImGui::Text("Material Properties");
 
-    Vec3 albedo = m_Material->GetAlbedoColor();
+    Vec3 albedo = m_Material->GetMaterial().Albedo;
     if (ImGui::ColorEdit3("Albedo Color", &albedo.x)) {
       m_Material->SetAlbedoColor(albedo);
       m_IsDirty = true;
     }
 
-    f32 roughness = m_Material->GetRoughness();
+    f32 roughness = m_Material->GetMaterial().Roughness;
     if (ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f)) {
       m_Material->SetRoughness(roughness);
       m_IsDirty = true;
     }
 
-    f32 metallic = m_Material->GetMetallic();
+    f32 metallic = m_Material->GetMaterial().Metallic;
     if (ImGui::SliderFloat("Metallic", &metallic, 0.0f, 1.0f)) {
-      m_Material->SetMetallic(metallic);
+      m_Material->GetMaterial().Metallic = metallic;
       m_IsDirty = true;
     }
 
-    f32 ao = m_Material->GetAO();
+    f32 ao = m_Material->GetMaterial().AO;
     if (ImGui::SliderFloat("AO", &ao, 0.0f, 1.0f)) {
-      m_Material->SetAO(ao);
+      m_Material->GetMaterial().AO = ao;
       m_IsDirty = true;
     }
 
-    f32 heightScale = m_Material->GetHeightScale();
-    if (ImGui::SliderFloat("Height Scale", &heightScale, 0.0f, 0.3f, "%.3f")) {
-      m_Material->SetHeightScale(heightScale);
-      m_IsDirty = true;
-    }
+    ImGui::Text("Height Scale: Not supported in Material3D yet");
+    ImGui::Text("Tiling: Not supported in Material3D yet");
     ImGui::SameLine();
     if (ImGui::Button("?##HeightHelp")) {
       ImGui::OpenPopup("HeightHelp");
@@ -752,11 +749,8 @@ void MaterialEditorPanel::DrawNodeInspector() {
       ImGui::EndPopup();
     }
 
-    Vec2 tiling = m_Material->GetTiling();
-    if (ImGui::DragFloat2("Tiling", &tiling.x, 0.1f, 0.1f, 100.0f)) {
-      m_Material->SetTiling(tiling);
-      m_IsDirty = true;
-    }
+    // Material3D doesn't have tiling support yet
+    ImGui::Text("Tiling: Not supported in Material3D yet");
 
     ImGui::Separator();
   }
@@ -871,8 +865,8 @@ void MaterialEditorPanel::DrawPreview() {
     Renderer3D::BeginScene(*m_PreviewCamera);
 
     // Get material albedo color for preview
-    Vec4 albedo = m_Material->GetAlbedo();
-    Color previewColor(albedo.r, albedo.g, albedo.b, albedo.a);
+    glm::vec3 albedo = m_Material->GetMaterial().Albedo;
+    Color previewColor(albedo.r, albedo.g, albedo.b, 1.0f);
 
     // Draw sphere at origin with material color
     Renderer3D::DrawSphere(Vec3(0, 0, 0), 1.0f, previewColor);
@@ -1117,17 +1111,13 @@ const char *MaterialEditorPanel::GetNodeTypeName(MaterialNodeType type) {
 
 u32 MaterialEditorPanel::GenerateId() { return m_NextId++; }
 
-void MaterialEditorPanel::OpenMaterial(Ref<Material> material) {
+void MaterialEditorPanel::OpenMaterial(Ref<MaterialAsset> material) {
   m_Material = material;
   m_Nodes.clear();
   m_Connections.clear();
   m_NextId = 1;
-
-  // Create output node
-  CreateNode(MaterialNodeType::Output, Vec2(500, 200));
-
-  // TODO: Parse material and create nodes from it
-
+  m_SelectedNodeId = 0;
+  m_MaterialPath = "";
   m_IsDirty = false;
   m_Visible = true;
 }
@@ -1145,17 +1135,16 @@ void MaterialEditorPanel::LoadMaterialFromFile(const std::string &filepath) {
     // Create new material
     std::string name =
         matData["Name"] ? matData["Name"].as<std::string>() : "Loaded Material";
-    m_Material = Material::Create(name);
+    m_Material = MaterialAsset::Create(name);
     m_MaterialPath = filepath;
 
     // Load material properties
     if (matData["Albedo"]) {
       auto albedo = matData["Albedo"];
       if (albedo.IsSequence() && albedo.size() >= 3) {
-        Vec4 color(albedo[0].as<float>(), albedo[1].as<float>(),
-                   albedo[2].as<float>(),
-                   albedo.size() > 3 ? albedo[3].as<float>() : 1.0f);
-        m_Material->SetAlbedo(color);
+        glm::vec3 color(albedo[0].as<float>(), albedo[1].as<float>(),
+                        albedo[2].as<float>());
+        m_Material->SetAlbedoColor(color);
       }
     }
     if (matData["Roughness"]) {
@@ -1169,15 +1158,13 @@ void MaterialEditorPanel::LoadMaterialFromFile(const std::string &filepath) {
     if (matData["AlbedoTexture"]) {
       std::string texPath = matData["AlbedoTexture"].as<std::string>();
       if (std::filesystem::exists(texPath)) {
-        m_Material->SetAlbedoTexture(Texture2D::Create(texPath));
-        m_Material->SetAlbedoTexturePath(texPath);
+        m_Material->SetAlbedoMap(Texture2D::Create(texPath));
       }
     }
     if (matData["NormalTexture"]) {
       std::string texPath = matData["NormalTexture"].as<std::string>();
       if (std::filesystem::exists(texPath)) {
-        m_Material->SetNormalTexture(Texture2D::Create(texPath));
-        m_Material->SetNormalTexturePath(texPath);
+        m_Material->SetNormalMap(Texture2D::Create(texPath));
       }
     }
 
@@ -1297,7 +1284,7 @@ void MaterialEditorPanel::LoadMaterialFromFile(const std::string &filepath) {
 }
 
 void MaterialEditorPanel::NewMaterial() {
-  m_Material = Material::Create("New Material");
+  m_Material = MaterialAsset::Create("New Material");
   m_Nodes.clear();
   m_Connections.clear();
   m_NextId = 1;
@@ -1351,19 +1338,22 @@ void MaterialEditorPanel::SaveMaterial() {
 
   // Save material properties
   out << YAML::Key << "Albedo" << YAML::Value << YAML::Flow << YAML::BeginSeq
-      << m_Material->GetAlbedo().x << m_Material->GetAlbedo().y
-      << m_Material->GetAlbedo().z << m_Material->GetAlbedo().w << YAML::EndSeq;
-  out << YAML::Key << "Roughness" << YAML::Value << m_Material->GetRoughness();
-  out << YAML::Key << "Metallic" << YAML::Value << m_Material->GetMetallic();
+      << m_Material->GetMaterial().Albedo.x
+      << m_Material->GetMaterial().Albedo.y
+      << m_Material->GetMaterial().Albedo.z << 1.0f << YAML::EndSeq;
+  out << YAML::Key << "Roughness" << YAML::Value
+      << m_Material->GetMaterial().Roughness;
+  out << YAML::Key << "Metallic" << YAML::Value
+      << m_Material->GetMaterial().Metallic;
 
   // Save texture paths
-  if (m_Material->GetAlbedoTexture()) {
+  if (m_Material->GetMaterial().AlbedoMap) {
     out << YAML::Key << "AlbedoTexture" << YAML::Value
-        << m_Material->GetAlbedoTexturePath();
+        << "albedo_texture.png"; // TODO: Save actual texture path
   }
-  if (m_Material->GetNormalTexture()) {
+  if (m_Material->GetMaterial().NormalMap) {
     out << YAML::Key << "NormalTexture" << YAML::Value
-        << m_Material->GetNormalTexturePath();
+        << "normal_texture.png"; // TODO: Save actual texture path
   }
 
   // Save node graph
@@ -1475,19 +1465,17 @@ void MaterialEditorPanel::CompileMaterial() {
     if (pin.name == "Base Color") {
       if (sourceNode->type == MaterialNodeType::TextureSample &&
           sourceNode->texture) {
-        m_Material->SetAlbedoTexture(sourceNode->texture);
-        m_Material->SetAlbedoTexturePath(sourceNode->texturePath);
+        m_Material->SetAlbedoMap(sourceNode->texture);
         GINI_INFO("Set albedo texture from node");
       } else if (sourceNode->type == MaterialNodeType::Constant) {
         Vec4 color = sourceNode->constantValue;
-        m_Material->SetAlbedo(color);
+        m_Material->SetAlbedoColor(glm::vec3(color.x, color.y, color.z));
         GINI_INFO("Set albedo color: ", color.x, ", ", color.y, ", ", color.z);
       }
     } else if (pin.name == "Normal") {
       if (sourceNode->type == MaterialNodeType::TextureSample &&
           sourceNode->texture) {
-        m_Material->SetNormalTexture(sourceNode->texture);
-        m_Material->SetNormalTexturePath(sourceNode->texturePath);
+        m_Material->SetNormalMap(sourceNode->texture);
         GINI_INFO("Set normal texture from node");
       }
     } else if (pin.name == "Roughness") {
@@ -1496,7 +1484,7 @@ void MaterialEditorPanel::CompileMaterial() {
         GINI_INFO("Set roughness: ", sourceNode->constantValue.x);
       } else if (sourceNode->type == MaterialNodeType::TextureSample &&
                  sourceNode->texture) {
-        m_Material->SetRoughnessTexture(sourceNode->texture);
+        m_Material->SetRoughnessMap(sourceNode->texture);
         GINI_INFO("Set roughness texture from node");
       }
     } else if (pin.name == "Metallic") {
@@ -1505,26 +1493,27 @@ void MaterialEditorPanel::CompileMaterial() {
         GINI_INFO("Set metallic: ", sourceNode->constantValue.x);
       } else if (sourceNode->type == MaterialNodeType::TextureSample &&
                  sourceNode->texture) {
-        m_Material->SetMetallicTexture(sourceNode->texture);
+        m_Material->SetMetallicMap(sourceNode->texture);
         GINI_INFO("Set metallic texture from node");
       }
     } else if (pin.name == "AO") {
       if (sourceNode->type == MaterialNodeType::Constant) {
-        m_Material->SetAO(sourceNode->constantValue.x);
+        // Material3D doesn't have SetAO method, use GetMaterial().AO
+        m_Material->GetMaterial().AO = sourceNode->constantValue.x;
         GINI_INFO("Set AO: ", sourceNode->constantValue.x);
       } else if (sourceNode->type == MaterialNodeType::TextureSample &&
                  sourceNode->texture) {
-        m_Material->SetAOTexture(sourceNode->texture);
+        m_Material->SetAOMap(sourceNode->texture);
         GINI_INFO("Set AO texture from node");
       }
     } else if (pin.name == "Height") {
       if (sourceNode->type == MaterialNodeType::TextureSample &&
           sourceNode->texture) {
-        m_Material->SetHeightTexture(sourceNode->texture);
-        GINI_INFO("Set height texture from node");
+        // Material3D doesn't have height texture support yet
+        GINI_INFO("Height texture not supported in Material3D yet");
       } else if (sourceNode->type == MaterialNodeType::Constant) {
-        m_Material->SetHeightScale(sourceNode->constantValue.x);
-        GINI_INFO("Set height scale: ", sourceNode->constantValue.x);
+        // Material3D doesn't have height scale support yet
+        GINI_INFO("Height scale not supported in Material3D yet");
       }
     }
   }

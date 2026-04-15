@@ -206,16 +206,6 @@ void RainEmitter::Render(const Mat4 &viewProjection) {
     return;
   }
 
-  // Debug output
-  static u32 debugCounter = 0;
-  if (++debugCounter % 60 == 0) { // Log every 60 frames
-    GINI_TRACE("Rain rendering: {} active particles, emitter active: {}",
-               m_Particles.activeCount, m_Active);
-    GINI_TRACE("Rain position: {:.2f}, {:.2f}, {:.2f}, size: {:.2f}",
-               m_Settings.position.x, m_Settings.position.y,
-               m_Settings.position.z, m_Settings.size);
-  }
-
   // Bind shader and set uniforms
   m_RainShader->Bind();
   m_RainShader->SetMat4("uViewProjection", viewProjection);

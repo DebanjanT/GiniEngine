@@ -281,8 +281,14 @@ const char *AssetRegistry::AssetTypeToString(AssetType type) {
     return "Texture";
   case AssetType::Material:
     return "Material";
+  case AssetType::MaterialAsset:
+    return "MaterialAsset";
   case AssetType::Mesh:
     return "Mesh";
+  case AssetType::MeshSource:
+    return "MeshSource";
+  case AssetType::StaticMesh:
+    return "StaticMesh";
   case AssetType::Scene:
     return "Scene";
   case AssetType::Audio:
@@ -304,8 +310,14 @@ const char *AssetRegistry::GetAssetTypeIcon(AssetType type) {
     return "T";
   case AssetType::Material:
     return "M";
+  case AssetType::MaterialAsset:
+    return "MA";
   case AssetType::Mesh:
     return "3D";
+  case AssetType::MeshSource:
+    return "MS";
+  case AssetType::StaticMesh:
+    return "SM";
   case AssetType::Scene:
     return "S";
   case AssetType::Audio:

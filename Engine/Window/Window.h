@@ -29,6 +29,8 @@ public:
     void SwapBuffers();
     void MakeContextCurrent();
     void DetachContext();
+    void CreateSharedContext();
+    void MakeSharedContextCurrent();
     bool ShouldClose() const;
     void Close();
     
@@ -67,6 +69,7 @@ private:
     void SetupCallbacks();
     
     GLFWwindow* m_Window = nullptr;
+    GLFWwindow* m_SharedContextWindow = nullptr;
     
     struct WindowData {
         std::string title;

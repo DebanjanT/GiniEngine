@@ -2,6 +2,9 @@
 
 #include "EditorPanel.h"
 #include "Core/Types.h"
+#include "Asset/AssimpMeshImporter.h"
+#include "Renderer/MeshSource.h"
+#include "Renderer/MaterialAsset.h"
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -36,9 +39,14 @@ public:
   void OnImGuiRender();
   bool IsOpen() const { return m_Open; }
 
+  // Callback receives the MeshSource handle and list of MaterialAsset handles
   using ImportCallback =
-      std::function<void(const std::string &gmeshPath)>;
+      std::function<void(u64 meshSourceHandle, const std::vector<u64>& materialHandles)>;
   void SetOnImportComplete(ImportCallback cb) { m_OnImportComplete = cb; }
+
+  // Get the last imported mesh source
+  Ref<MeshSource> GetImportedMeshSource() const { return m_ImportedMeshSource; }
+  const std::vector<Ref<MaterialAsset>>& GetImportedMaterials() const { return m_ImportedMaterials; }
 
 private:
   void DrawGeneralTab();
@@ -67,6 +75,10 @@ private:
   bool m_PreviewLoaded = false;
 
   ImportCallback m_OnImportComplete;
+
+  // Imported assets
+  Ref<MeshSource> m_ImportedMeshSource;
+  std::vector<Ref<MaterialAsset>> m_ImportedMaterials;
 };
 
 } // namespace Gini

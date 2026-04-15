@@ -1,6 +1,6 @@
 #include "Animation.h"
 #include "Core/Logger.h"
-#include "Renderer/Model.h"
+#include "Renderer/MeshSource.h"
 
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
@@ -94,7 +94,7 @@ Vec3 Bone::InterpolateScale(f32 animationTime) {
 }
 
 // Animation implementation
-Animation::Animation(const std::string &filepath, Model *model) {
+Animation::Animation(const std::string &filepath, MeshSource *meshSource) {
   Assimp::Importer importer;
   const aiScene *scene = importer.ReadFile(filepath, aiProcess_Triangulate);
 
@@ -109,14 +109,14 @@ Animation::Animation(const std::string &filepath, Model *model) {
   m_Name = animation->mName.C_Str();
 
   ReadHierarchyData(m_RootNode, scene->mRootNode);
-  ReadMissingBones(animation, model);
+  ReadMissingBones(animation, meshSource);
 
   GINI_INFO("Loaded animation: ", m_Name, " (", m_Duration, " ticks, ",
             m_Bones.size(), " bones)");
 }
 
-Ref<Animation> Animation::Create(const std::string &filepath, Model *model) {
-  return CreateRef<Animation>(filepath, model);
+Ref<Animation> Animation::Create(const std::string &filepath, MeshSource *meshSource) {
+  return CreateRef<Animation>(filepath, meshSource);
 }
 
 Bone *Animation::FindBone(const std::string &name) {
@@ -143,7 +143,7 @@ void Animation::ReadHierarchyData(AnimationNode &dest, const aiNode *src) {
   }
 }
 
-void Animation::ReadMissingBones(const aiAnimation *animation, Model *model) {
+void Animation::ReadMissingBones(const aiAnimation *animation, MeshSource *meshSource) {
   i32 boneCount = 0;
 
   for (u32 i = 0; i < animation->mNumChannels; i++) {

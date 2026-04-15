@@ -4,6 +4,7 @@
 #include "ECS/Components.h"
 #include "ECS/World.h"
 #include "Renderer/AtmosphericSky.h"
+#include "Renderer/Skybox.h"
 #include "Terrain/Terrain.h"
 #include <string>
 #include <vector>
@@ -79,6 +80,15 @@ public:
   void EnableAtmosphericSky(bool enable);
   bool IsAtmosphericSkyEnabled() const { return m_UseAtmosphericSky; }
 
+  // Skybox
+  void SetSkybox(Ref<Skybox> skybox) { m_Skybox = skybox; }
+  Ref<Skybox> GetSkybox() const { return m_Skybox; }
+  bool HasSkybox() const { return m_Skybox != nullptr; }
+  void EnableSkybox(bool enable);
+  bool IsSkyboxEnabled() const { return m_UseSkybox; }
+  const std::string& GetSkyboxHDRPath() const { return m_SkyboxHDRPath; }
+  void SetSkyboxHDRPath(const std::string& path) { m_SkyboxHDRPath = path; }
+
 private:
   std::string m_Name;
   std::string m_Filepath;
@@ -97,6 +107,11 @@ private:
   // Atmospheric Sky
   Ref<AtmosphericSky> m_AtmosphericSky;
   bool m_UseAtmosphericSky = true;
+
+  // Skybox
+  Ref<Skybox> m_Skybox;
+  bool m_UseSkybox = false;
+  std::string m_SkyboxHDRPath;
 };
 
 // Scene Manager for handling multiple scenes

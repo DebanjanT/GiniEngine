@@ -83,8 +83,8 @@ void ImGuiLayer::Init() {
     style.Colors[ImGuiCol_WindowBg].w = 1.0f;
   }
 
-  std::string regularFontPath = GetFontPath("SpaceGrotesk-Regular.ttf");
-  std::string semiboldFontPath = GetFontPath("SpaceGrotesk-SemiBold.ttf");
+  std::string regularFontPath = GetFontPath("MavenPro-Regular.ttf");
+  std::string semiboldFontPath = GetFontPath("MavenPro-SemiBold.ttf");
 
   ImFont *regular =
       io.Fonts->AddFontFromFileTTF(regularFontPath.c_str(), m_fontSize);
@@ -119,8 +119,8 @@ void ImGuiLayer::ReloadFonts(float size) {
 
   io.Fonts->Clear();
 
-  std::string regularFontPath = GetFontPath("SpaceGrotesk-Regular.ttf");
-  std::string semiboldFontPath = GetFontPath("SpaceGrotesk-SemiBold.ttf");
+  std::string regularFontPath = GetFontPath("MavenPro-Regular.ttf");
+  std::string semiboldFontPath = GetFontPath("MavenPro-SemiBold.ttf");
 
   ImFont *regular = io.Fonts->AddFontFromFileTTF(regularFontPath.c_str(), size);
   ImFont *semibold =
@@ -162,7 +162,7 @@ void ImGuiLayer::Begin() {
     ImGuiIO &io = ImGui::GetIO();
     io.Fonts->Clear();
 
-    std::string fontPath = GetFontPath("SpaceGrotesk-Regular.ttf");
+    std::string fontPath = GetFontPath("MavenPro-Regular.ttf");
     ImFont *font = io.Fonts->AddFontFromFileTTF(fontPath.c_str(), m_fontSize);
 
     if (!font)

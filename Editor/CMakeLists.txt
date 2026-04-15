@@ -76,3 +76,21 @@ add_custom_command(TARGET GiniEditor POST_BUILD
     ${CMAKE_CURRENT_SOURCE_DIR}/assets
     $<TARGET_FILE_DIR:GiniEditor>/assets
 )
+
+# Copy MinGW runtime DLLs to bin directory for Windows
+if(WIN32 AND MINGW)
+    # Get the MinGW bin directory from the compiler path
+    get_filename_component(MINGW_BIN_DIR ${CMAKE_CXX_COMPILER} DIRECTORY)
+    add_custom_command(TARGET GiniEditor POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${MINGW_BIN_DIR}/libwinpthread-1.dll"
+        $<TARGET_FILE_DIR:GiniEditor> || true
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${MINGW_BIN_DIR}/libgcc_s_seh-1.dll"
+        $<TARGET_FILE_DIR:GiniEditor> || true
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${MINGW_BIN_DIR}/libstdc++-6.dll"
+        $<TARGET_FILE_DIR:GiniEditor> || true
+        COMMENT "Copying MinGW runtime DLLs to bin directory"
+    )
+endif()

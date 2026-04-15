@@ -186,4 +186,35 @@ private:
   std::unordered_map<std::string, Ref<Material>> m_Materials;
 };
 
+// Simple PBR material struct for immediate rendering (non-asset based)
+struct Material3D {
+  std::string name;
+
+  // PBR properties
+  Vec3 albedo = Vec3(1.0f);
+  f32 metallic = 0.0f;
+  f32 roughness = 0.5f;
+  f32 ao = 1.0f;
+  Vec3 emissive = Vec3(0.0f);
+  f32 emissiveStrength = 1.0f;
+
+  f32 heightScale = 0.05f;
+
+  // Textures
+  Ref<Texture2D> albedoMap;
+  Ref<Texture2D> normalMap;
+  Ref<Texture2D> metallicMap;
+  Ref<Texture2D> roughnessMap;
+  Ref<Texture2D> aoMap;
+  Ref<Texture2D> emissiveMap;
+  Ref<Texture2D> heightMap;
+
+  // Legacy properties (for non-PBR)
+  Vec3 diffuse = Vec3(1.0f);
+  Vec3 specular = Vec3(1.0f);
+  f32 shininess = 32.0f;
+  Ref<Texture2D> diffuseMap;
+  Ref<Texture2D> specularMap;
+};
+
 } // namespace Gini

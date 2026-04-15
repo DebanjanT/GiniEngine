@@ -59,9 +59,9 @@ Entity Scene::DuplicateEntity(Entity entity) {
     m_World.AddComponent<SpriteComponent>(newEntity, src);
   }
 
-  if (m_World.HasComponent<MeshComponent>(entity)) {
-    auto &src = m_World.GetComponent<MeshComponent>(entity);
-    m_World.AddComponent<MeshComponent>(newEntity, src);
+  if (m_World.HasComponent<StaticMeshComponent>(entity)) {
+    auto &src = m_World.GetComponent<StaticMeshComponent>(entity);
+    m_World.AddComponent<StaticMeshComponent>(newEntity, src);
   }
 
   if (m_World.HasComponent<MaterialComponent>(entity)) {
@@ -134,12 +134,42 @@ void Scene::OnRender() {
 }
 
 void Scene::OnRender3D() {
-  // 3D rendering with transforms
-  auto view = m_World.GetRegistry().view<TransformComponent>();
-  for (auto entity : view) {
-    auto &transform = view.get<TransformComponent>(entity);
-    // Render meshes, sprites, etc.
+  // Render StaticMeshComponents (new Hazel-style)
+  {
+    auto view = m_World.GetRegistry().view<TransformComponent, StaticMeshComponent>();
+    for (auto entity : view) {
+      auto &transform = view.get<TransformComponent>(entity);
+      auto &staticMesh = view.get<StaticMeshComponent>(entity);
+
+      if (!staticMesh.visible || staticMesh.meshSourceHandle == 0) {
+        continue;
+      }
+
+      Mat4 transformMatrix = transform.GetTransform();
+      Renderer3D::RenderStaticMesh(staticMesh.meshSourceHandle, transformMatrix,
+                                   staticMesh.submeshIndices,
+                                   staticMesh.materialOverrides);
+    }
   }
+
+  // Render DynamicMeshComponents (new Hazel-style, for rigged meshes)
+  {
+    auto view = m_World.GetRegistry().view<TransformComponent, DynamicMeshComponent>();
+    for (auto entity : view) {
+      auto &transform = view.get<TransformComponent>(entity);
+      auto &dynamicMesh = view.get<DynamicMeshComponent>(entity);
+
+      if (!dynamicMesh.visible || dynamicMesh.meshSourceHandle == 0) {
+        continue;
+      }
+
+      Mat4 transformMatrix = transform.GetTransform();
+      Renderer3D::RenderStaticMesh(dynamicMesh.meshSourceHandle, transformMatrix,
+                                   dynamicMesh.submeshIndices,
+                                   dynamicMesh.materialOverrides);
+    }
+  }
+
 }
 
 void Scene::SetParent(Entity child, Entity parent) {
@@ -295,6 +325,13 @@ void Scene::EnableAtmosphericSky(bool enable) {
   if (enable && !m_AtmosphericSky) {
     m_AtmosphericSky = AtmosphericSky::Create();
     m_AtmosphericSky->Initialize();
+  }
+}
+
+void Scene::EnableSkybox(bool enable) {
+  m_UseSkybox = enable;
+  if (enable && !m_Skybox) {
+    m_Skybox = Skybox::Create();
   }
 }
 

@@ -3,7 +3,11 @@
 #include "ImGui/ImGuizmo.h"
 #include "Renderer/IBL.h"
 #include "Renderer/Light.h"
-#include "Renderer/ModelCache.h"
+#include "Asset/AssimpMeshImporter.h"
+#include "Assets/AssetManager.h"
+#include "Asset/AssetRegistry.h"
+#include "Renderer/MeshSource.h"
+#include "Renderer/MaterialAsset.h"
 #include "Renderer/PostProcess.h"
 #include "Renderer/Renderer3D.h"
 #include "Renderer/ShadowMap.h"
@@ -32,9 +36,9 @@ EditorApp::EditorApp()
         config.windowWidth = 1920;
         config.windowHeight = 1080;
         config.vsync = true;
-        config.enableRenderThread = false;
+        config.enableRenderThread = true;
         config.enableAssetLoadingThread = true;
-        config.enableNetworkThread = false;
+        config.enableNetworkThread = true;
         return config;
       }()) {}
 
@@ -102,7 +106,7 @@ void EditorApp::OnInit() {
   m_ConsolePanel.SetVisible(true);
   m_TerrainPanel.SetVisible(true);
   m_AssetBrowserPanel.SetVisible(true);
-  m_WeatherPanel.SetVisible(true);
+  m_WeatherPanel.SetVisible(false);
 
   // No default terrain -- user creates/links terrain via Scene Properties or Terrain Editor
   m_Terrain = nullptr;
@@ -195,24 +199,18 @@ void EditorApp::OnRender() {
 
           if (m_ActiveScene) {
             auto &shadowWorld = m_ActiveScene->GetWorld();
-            auto shadowView = shadowWorld.GetRegistry().view<TransformComponent, MeshComponent>();
+            auto shadowView = shadowWorld.GetRegistry().view<TransformComponent, StaticMeshComponent>();
             for (auto ent : shadowView) {
-              auto &mc = shadowView.get<MeshComponent>(ent);
-              if (!mc.castShadows) continue;
+              auto &smc = shadowView.get<StaticMeshComponent>(ent);
+              if (!smc.castShadows || !smc.visible) continue;
               auto &tc = shadowView.get<TransformComponent>(ent);
               Mat4 modelMat = tc.GetTransform();
               depthShader->SetMat4("u_Model", modelMat);
 
-              if (mc.meshType == MeshType::Custom && !mc.modelPath.empty()) {
-                auto model = ModelCache::Get().Load(mc.modelPath);
-                if (model) {
-                  for (const auto &mesh : model->GetMeshes()) {
-                    mesh->Draw();
-                  }
-                }
-              } else {
+              // Render primitive types for shadows
+              if (smc.primitiveType != MeshType::None) {
                 Ref<Mesh> primMesh;
-                switch (mc.meshType) {
+                switch (smc.primitiveType) {
                 case MeshType::Cube: primMesh = Mesh::CreateCube(); break;
                 case MeshType::Sphere: primMesh = Mesh::CreateSphere(); break;
                 case MeshType::Plane: primMesh = Mesh::CreatePlane(); break;
@@ -246,7 +244,12 @@ void EditorApp::OnRender() {
 
   Renderer3D::BeginScene(*m_EditorCamera);
 
-  // Render atmospheric sky if enabled
+  // Render skybox if enabled (takes priority over atmospheric sky)
+  if (m_ActiveScene && m_ActiveScene->IsSkyboxEnabled() &&
+      m_ActiveScene->HasSkybox()) {
+    m_ActiveScene->GetSkybox()->Render(*m_EditorCamera);
+  }
+  // Render atmospheric sky if enabled (fallback if skybox not enabled)
   if (m_ActiveScene && m_ActiveScene->IsAtmosphericSkyEnabled() &&
       m_ActiveScene->HasAtmosphericSky()) {
     m_ActiveScene->GetAtmosphericSky()->Render(*m_EditorCamera);
@@ -283,77 +286,43 @@ void EditorApp::OnRender() {
     Renderer3D::DrawLine(Vec3(0, 0, 0), Vec3(0, 0, 5),
                          Color(0.2f, 0.2f, 1.0f));
 
-    // Draw entities using MeshComponent when available
+    // Draw entities using StaticMeshComponent
     auto &world = m_ActiveScene->GetWorld();
-    auto view = world.GetRegistry().view<TransformComponent>();
+    auto meshView = world.GetRegistry().view<TransformComponent, StaticMeshComponent>();
+    for (auto entity : meshView) {
+      auto &transform = meshView.get<TransformComponent>(entity);
+      auto &smc = meshView.get<StaticMeshComponent>(entity);
+      
+      if (!smc.visible) continue;
+      
+      Mat4 modelMatrix = transform.GetTransform();
+
+      Material3D mat3d;
+      if (world.HasComponent<MaterialComponent>(entity)) {
+        auto &matComp = world.GetComponent<MaterialComponent>(entity);
+        mat3d.albedo = matComp.albedo;
+        mat3d.metallic = matComp.metallic;
+        mat3d.roughness = matComp.roughness;
+        mat3d.ao = matComp.ao;
+        mat3d.emissive = matComp.emissive;
+      }
+
+      // Render primitive types
+      if (smc.primitiveType != MeshType::None) {
+        Renderer3D::RenderPrimitive(smc.primitiveType, modelMatrix, mat3d);
+      } else if (smc.meshSourceHandle != 0) {
+        // Render MeshSource
+        Renderer3D::RenderStaticMesh(smc.meshSourceHandle, modelMatrix,
+                                     smc.submeshIndices, smc.materialOverrides);
+      }
+    }
+
+    // Draw entities without StaticMeshComponent (fallback)
+    auto view = world.GetRegistry().view<TransformComponent>(entt::exclude<StaticMeshComponent>);
     int entityIndex = 0;
     for (auto entity : view) {
       auto &transform = view.get<TransformComponent>(entity);
-      Mat4 modelMatrix = transform.GetTransform();
-
-      if (world.HasComponent<MeshComponent>(entity)) {
-        auto &mc = world.GetComponent<MeshComponent>(entity);
-
-        Material3D mat3d;
-        if (world.HasComponent<MaterialComponent>(entity)) {
-          auto &matComp = world.GetComponent<MaterialComponent>(entity);
-          mat3d.albedo = matComp.albedo;
-          mat3d.metallic = matComp.metallic;
-          mat3d.roughness = matComp.roughness;
-          mat3d.ao = matComp.ao;
-          mat3d.emissive = matComp.emissive;
-          if (!matComp.albedoTexturePath.empty())
-            mat3d.albedoMap = Texture2D::Create(matComp.albedoTexturePath);
-          if (!matComp.normalTexturePath.empty())
-            mat3d.normalMap = Texture2D::Create(matComp.normalTexturePath);
-          if (!matComp.metallicTexturePath.empty())
-            mat3d.metallicMap = Texture2D::Create(matComp.metallicTexturePath);
-          if (!matComp.roughnessTexturePath.empty())
-            mat3d.roughnessMap = Texture2D::Create(matComp.roughnessTexturePath);
-          if (!matComp.aoTexturePath.empty())
-            mat3d.aoMap = Texture2D::Create(matComp.aoTexturePath);
-        }
-
-        switch (mc.meshType) {
-        case MeshType::Custom: {
-          if (!mc.modelPath.empty()) {
-            auto model = ModelCache::Get().Load(mc.modelPath);
-            if (model) {
-              if (world.HasComponent<AnimatorComponent3D>(entity)) {
-                auto &ac = world.GetComponent<AnimatorComponent3D>(entity);
-                if (ac.animator) {
-                  Renderer3D::DrawSkinnedModel(
-                      model, modelMatrix,
-                      ac.animator->GetFinalBoneMatrices());
-                } else {
-                  Renderer3D::DrawModel(model, modelMatrix);
-                }
-              } else {
-                Renderer3D::DrawModel(model, modelMatrix);
-              }
-            }
-          }
-          break;
-        }
-        case MeshType::Cube:
-          Renderer3D::DrawMesh(Mesh::CreateCube(), modelMatrix, mat3d);
-          break;
-        case MeshType::Sphere:
-          Renderer3D::DrawMesh(Mesh::CreateSphere(), modelMatrix, mat3d);
-          break;
-        case MeshType::Plane:
-          Renderer3D::DrawMesh(Mesh::CreatePlane(), modelMatrix, mat3d);
-          break;
-        case MeshType::Cylinder:
-          Renderer3D::DrawMesh(Mesh::CreateCylinder(), modelMatrix, mat3d);
-          break;
-        default: {
-          Color fallback(0.7f, 0.7f, 0.7f);
-          Renderer3D::DrawCube(transform.position, transform.scale, fallback);
-          break;
-        }
-        }
-      } else {
+      if (false) {
         Color cubeColor;
         switch (entityIndex % 3) {
         case 0: cubeColor = Color(0.8f, 0.3f, 0.3f); break;
@@ -661,32 +630,32 @@ void EditorApp::DrawMenuBar() {
         if (ImGui::MenuItem("Cube")) {
           if (m_ActiveScene) {
             auto e = m_ActiveScene->CreateEntity("Cube");
-            auto &mc = m_ActiveScene->GetWorld().AddComponent<MeshComponent>(e);
-            mc.meshType = MeshType::Cube;
+            auto &smc = m_ActiveScene->GetWorld().AddComponent<StaticMeshComponent>(e);
+            smc.primitiveType = MeshType::Cube;
             m_ActiveScene->GetWorld().AddComponent<MaterialComponent>(e);
           }
         }
         if (ImGui::MenuItem("Sphere")) {
           if (m_ActiveScene) {
             auto e = m_ActiveScene->CreateEntity("Sphere");
-            auto &mc = m_ActiveScene->GetWorld().AddComponent<MeshComponent>(e);
-            mc.meshType = MeshType::Sphere;
+            auto &smc = m_ActiveScene->GetWorld().AddComponent<StaticMeshComponent>(e);
+            smc.primitiveType = MeshType::Sphere;
             m_ActiveScene->GetWorld().AddComponent<MaterialComponent>(e);
           }
         }
         if (ImGui::MenuItem("Plane")) {
           if (m_ActiveScene) {
             auto e = m_ActiveScene->CreateEntity("Plane");
-            auto &mc = m_ActiveScene->GetWorld().AddComponent<MeshComponent>(e);
-            mc.meshType = MeshType::Plane;
+            auto &smc = m_ActiveScene->GetWorld().AddComponent<StaticMeshComponent>(e);
+            smc.primitiveType = MeshType::Plane;
             m_ActiveScene->GetWorld().AddComponent<MaterialComponent>(e);
           }
         }
         if (ImGui::MenuItem("Cylinder")) {
           if (m_ActiveScene) {
             auto e = m_ActiveScene->CreateEntity("Cylinder");
-            auto &mc = m_ActiveScene->GetWorld().AddComponent<MeshComponent>(e);
-            mc.meshType = MeshType::Cylinder;
+            auto &smc = m_ActiveScene->GetWorld().AddComponent<StaticMeshComponent>(e);
+            smc.primitiveType = MeshType::Cylinder;
             m_ActiveScene->GetWorld().AddComponent<MaterialComponent>(e);
           }
         }
@@ -727,7 +696,7 @@ void EditorApp::DrawMenuBar() {
 
     if (ImGui::BeginMenu("Tools")) {
       if (ImGui::MenuItem("Import Model...")) {
-        auto path = FileDialog::OpenFile({{"3D Models", "fbx,obj,gltf,glb,dae"}});
+        auto path = FileDialog::OpenFile({{"3D Models (*.fbx, *.obj, *.gltf, *.glb, *.dae)", "fbx,obj,gltf,glb,dae"}});
         if (!path.empty()) {
           m_ModelImportDialog.Open(path);
         }
@@ -924,10 +893,34 @@ void EditorApp::DrawViewport() {
 
         std::string name = p.stem().string();
         auto entity = m_ActiveScene->CreateEntity(name);
-        auto &mc =
-            m_ActiveScene->GetWorld().AddComponent<MeshComponent>(entity);
-        mc.meshType = MeshType::Custom;
-        mc.modelPath = modelFilePath;
+        auto &smc =
+            m_ActiveScene->GetWorld().AddComponent<StaticMeshComponent>(entity);
+
+        // Import mesh using AssimpMeshImporter
+        AssimpMeshImporter importer(modelFilePath);
+        auto result = importer.Import();
+        if (result.success && result.meshSource) {
+          // Add to MeshSourceLibrary with a UUID-based handle
+          u64 handle = AssetRegistry::Get().RegisterAsset(p, AssetType::MeshSource);
+          MeshSourceLibrary::Get().Add(handle, result.meshSource);
+          smc.meshSourceHandle = handle;
+          smc.primitiveType = MeshType::None; // Not using built-in primitive
+
+          // Store imported materials in MaterialAssetLibrary
+          for (size_t i = 0; i < result.materials.size(); ++i) {
+            // Generate unique handle for each material
+            std::string matName = result.materials[i]->GetName();
+            std::filesystem::path matPath = p / (matName + ".ginimat");
+            u64 matHandle = AssetRegistry::Get().RegisterAsset(matPath, AssetType::MaterialAsset);
+            MaterialAssetLibrary::Get().Add(matHandle, result.materials[i]);
+            smc.materialOverrides.push_back(matHandle);
+            GINI_INFO("Registered material '", matName, "' with handle ", matHandle);
+          }
+        } else {
+          // Fallback to cube if import fails
+          smc.primitiveType = MeshType::Cube;
+        }
+
         m_ActiveScene->GetWorld().AddComponent<MaterialComponent>(entity);
 
         m_SelectedEntity = entity;
@@ -946,10 +939,34 @@ void EditorApp::DrawViewport() {
         if (m_ActiveScene) {
           std::string name = p.stem().string();
           auto entity = m_ActiveScene->CreateEntity(name);
-          auto &mc =
-              m_ActiveScene->GetWorld().AddComponent<MeshComponent>(entity);
-          mc.meshType = MeshType::Custom;
-          mc.modelPath = assetPath;
+          auto &smc =
+              m_ActiveScene->GetWorld().AddComponent<StaticMeshComponent>(entity);
+
+          // Import mesh using AssimpMeshImporter
+          AssimpMeshImporter importer(assetPath);
+          auto result = importer.Import();
+          if (result.success && result.meshSource) {
+            // Add to MeshSourceLibrary with a UUID-based handle
+            u64 handle = AssetRegistry::Get().RegisterAsset(p, AssetType::MeshSource);
+            MeshSourceLibrary::Get().Add(handle, result.meshSource);
+            smc.meshSourceHandle = handle;
+            smc.primitiveType = MeshType::None; // Not using built-in primitive
+
+            // Store imported materials in MaterialAssetLibrary
+            for (size_t i = 0; i < result.materials.size(); ++i) {
+              // Generate unique handle for each material
+              std::string matName = result.materials[i]->GetName();
+              std::filesystem::path matPath = p / (matName + ".ginimat");
+              u64 matHandle = AssetRegistry::Get().RegisterAsset(matPath, AssetType::MaterialAsset);
+              MaterialAssetLibrary::Get().Add(matHandle, result.materials[i]);
+              smc.materialOverrides.push_back(matHandle);
+              GINI_INFO("Registered material '", matName, "' with handle ", matHandle);
+            }
+          } else {
+            // Fallback to cube if import fails
+            smc.primitiveType = MeshType::Cube;
+          }
+
           m_ActiveScene->GetWorld().AddComponent<MaterialComponent>(entity);
 
           m_SelectedEntity = entity;

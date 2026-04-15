@@ -3,6 +3,8 @@
 #include <glad/gl.h>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include "Core/ThreadProfiler.h"
+
 namespace Gini {
 
 static const char *s_SkyVertexShader = R"(
@@ -467,7 +469,7 @@ void AtmosphericSky::Render(const Camera3D &camera) {
   glDepthMask(GL_TRUE);
   glDepthFunc(GL_LESS);
 }
-
+GINI_PROFILE_SCOPE("Atmos SKY");
 void AtmosphericSky::Render(const Mat4 &viewMatrix, const Mat4 &projectionMatrix) {
   if (!m_Initialized) {
     Initialize();
@@ -514,6 +516,8 @@ void AtmosphericSky::Render(const Mat4 &viewMatrix, const Mat4 &projectionMatrix
   glDepthMask(GL_TRUE);
   glDepthFunc(GL_LESS);
 }
+
+
 
 void AtmosphericSky::SetSunFromTimeOfDay(f32 timeHours) {
   // Convert time to sun angle

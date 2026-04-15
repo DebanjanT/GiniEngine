@@ -18,6 +18,7 @@ Release/
 RelWithDebInfo/
 MinSizeRel/
 .cache
+Hazel/*
 
 # ===========================================
 # CMake generated files
@@ -209,3 +210,5 @@ config.local.h
 *.mdmp
 crash_reports/
 reference/Hazel
+/Hazel/
+/Hazel/

@@ -7,15 +7,15 @@
 
 namespace Gini {
 
-struct LogMessage {
-    enum class Level { Trace, Debug, Info, Warn, Error };
-    Level level;
-    std::string message;
-    std::string timestamp;
-};
-
 class ConsolePanel : public EditorPanel {
 public:
+    struct LogMessage {
+        enum class Level { Trace, Debug, Info, Warn, Error };
+        Level level;
+        std::string message;
+        std::string timestamp;
+    };
+
     ConsolePanel();
     
     void OnImGuiRender() override;

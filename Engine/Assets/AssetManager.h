@@ -4,7 +4,8 @@
 #include "Core/Threading.h"
 #include "Renderer/Texture.h"
 #include "Renderer/Shader.h"
-#include "Renderer/Model.h"
+#include "Renderer/MeshSource.h"
+#include "Asset/AssimpMeshImporter.h"
 #include <string>
 #include <unordered_map>
 #include <queue>
@@ -45,7 +46,7 @@ struct AssetHandle {
 
 using TextureHandle = AssetHandle<Texture2D>;
 using ShaderHandle = AssetHandle<Shader>;
-using ModelHandle = AssetHandle<Model>;
+using MeshSourceHandle = AssetHandle<MeshSource>;
 
 class AssetManager {
 public:
@@ -63,26 +64,26 @@ public:
     TextureHandle LoadTexture(const std::string& path);
     ShaderHandle LoadShader(const std::string& path);
     ShaderHandle LoadShader(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc);
-    ModelHandle LoadModel(const std::string& path);
+    MeshSourceHandle LoadMeshSource(const std::string& path);
     
     // Asynchronous loading
     void LoadTextureAsync(const std::string& path, std::function<void(TextureHandle)> callback);
-    void LoadModelAsync(const std::string& path, std::function<void(ModelHandle)> callback);
+    void LoadMeshSourceAsync(const std::string& path, std::function<void(MeshSourceHandle)> callback);
     
     // Get cached assets
     TextureHandle GetTexture(const std::string& path);
     ShaderHandle GetShader(const std::string& name);
-    ModelHandle GetModel(const std::string& path);
+    MeshSourceHandle GetMeshSource(const std::string& path);
     
     // Check if asset is loaded
     bool IsTextureLoaded(const std::string& path) const;
     bool IsShaderLoaded(const std::string& name) const;
-    bool IsModelLoaded(const std::string& path) const;
+    bool IsMeshSourceLoaded(const std::string& path) const;
     
     // Unload assets
     void UnloadTexture(const std::string& path);
     void UnloadShader(const std::string& name);
-    void UnloadModel(const std::string& path);
+    void UnloadMeshSource(const std::string& path);
     void UnloadAll();
     
     // Hot reload
@@ -92,7 +93,7 @@ public:
     // Stats
     u32 GetLoadedTextureCount() const { return static_cast<u32>(m_Textures.size()); }
     u32 GetLoadedShaderCount() const { return static_cast<u32>(m_Shaders.size()); }
-    u32 GetLoadedModelCount() const { return static_cast<u32>(m_Models.size()); }
+    u32 GetLoadedMeshSourceCount() const { return static_cast<u32>(m_MeshSources.size()); }
     u64 GetTotalMemoryUsage() const;
     
     const std::string& GetAssetRoot() const { return m_AssetRoot; }
@@ -111,7 +112,7 @@ private:
     
     std::unordered_map<std::string, TextureHandle> m_Textures;
     std::unordered_map<std::string, ShaderHandle> m_Shaders;
-    std::unordered_map<std::string, ModelHandle> m_Models;
+    std::unordered_map<std::string, MeshSourceHandle> m_MeshSources;
     mutable std::mutex m_AssetMutex;
     
     WorkerThread m_AssetLoaderThread;

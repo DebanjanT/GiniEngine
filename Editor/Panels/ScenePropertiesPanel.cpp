@@ -179,6 +179,70 @@ void ScenePropertiesPanel::OnImGuiRender() {
     }
   }
 
+  ImGui::Separator();
+
+  // Skybox Section
+  if (ImGui::CollapsingHeader("Skybox", ImGuiTreeNodeFlags_DefaultOpen)) {
+    bool skyboxEnabled = m_Scene->IsSkyboxEnabled();
+    if (ImGui::Checkbox("Enable Skybox", &skyboxEnabled)) {
+      m_Scene->EnableSkybox(skyboxEnabled);
+    }
+
+    if (skyboxEnabled && m_Scene->HasSkybox()) {
+      auto skybox = m_Scene->GetSkybox();
+
+      ImGui::Spacing();
+      ImGui::Text("Skybox Settings");
+
+      // Intensity
+      static float intensity = 1.0f;
+      intensity = skybox->GetIntensity();
+      if (ImGui::DragFloat("Intensity", &intensity, 0.1f, 0.0f, 10.0f)) {
+        skybox->SetIntensity(intensity);
+      }
+
+      // LOD
+      static float lod = 0.0f;
+      lod = skybox->GetLod();
+      if (ImGui::DragFloat("LOD", &lod, 0.1f, 0.0f, 10.0f)) {
+        skybox->SetLod(lod);
+      }
+
+      ImGui::Spacing();
+      ImGui::Text("Load Skybox");
+
+      // Load HDR/EXR
+      if (ImGui::Button("Load HDR/EXR...")) {
+        std::vector<FileDialogFilter> filters = {{"HDR Images", "hdr"}, {"EXR Images", "exr"}};
+        std::string filepath = FileDialog::OpenFile(filters);
+        if (!filepath.empty()) {
+          skybox->LoadFromHDR(filepath);
+          m_Scene->SetSkyboxHDRPath(filepath);
+          GINI_INFO("Loaded HDR skybox: {}", filepath);
+        }
+      }
+
+      // Load from 6 faces
+      ImGui::SameLine();
+      if (ImGui::Button("Load 6 Faces...")) {
+        // For now, just load one face as a placeholder
+        // TODO: Implement proper 6-face file dialog
+        std::vector<FileDialogFilter> filters = {{"Images", "png,jpg,jpg,tga,bmp"}};
+        std::string filepath = FileDialog::OpenFile(filters);
+        if (!filepath.empty()) {
+          // This is a simplified version - proper implementation would ask for 6 faces
+          std::vector<std::string> faces(6, filepath); // Use same image for all faces as placeholder
+          skybox->LoadFromFaces(faces);
+          GINI_INFO("Loaded skybox from faces (placeholder)");
+        }
+      }
+
+      ImGui::Spacing();
+      ImGui::TextDisabled("HDR/EXR files support environment lighting and reflections");
+      ImGui::TextDisabled("6-face cubemaps are traditional skybox textures");
+    }
+  }
+
   ImGui::End();
 }
 

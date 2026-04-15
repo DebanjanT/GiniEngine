@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.20)
 
 # Allow older CMake policies for dependencies
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
@@ -114,6 +114,14 @@ set(ASSIMP_BUILD_ZLIB ON CACHE BOOL "" FORCE)
 set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
 add_definitions(-Dfdopen=fdopen)
 FetchContent_MakeAvailable(assimp)
+
+# Configure GLM as header-only
+set(GLM_BUILD_LIBRARY OFF CACHE BOOL "" FORCE)
+set(GLM_HEADER_ONLY ON CACHE BOOL "" FORCE)
+
+# Vulkan SDK
+find_package(Vulkan REQUIRED)
+
 # Fetch all dependencies
 FetchContent_MakeAvailable(glfw glm entt stb imgui openal assimp yaml-cpp)
 
@@ -157,8 +165,8 @@ endif()
 if(GINI_BUILD_RUNTIME)
     add_subdirectory(Runtime)
 endif()
-
-# Sample games
-if(GINI_BUILD_SAMPLES)
-    add_subdirectory(Samples)
-endif()
+#
+## Sample games
+#if(GINI_BUILD_SAMPLES)
+#    add_subdirectory(Samples)
+#endif()

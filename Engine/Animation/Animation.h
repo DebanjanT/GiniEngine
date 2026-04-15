@@ -74,7 +74,7 @@ struct AnimationNode {
 class Animation {
 public:
   Animation() = default;
-  Animation(const std::string &filepath, class Model *model);
+  Animation(const std::string &filepath, class MeshSource *meshSource);
 
   Bone *FindBone(const std::string &name);
 
@@ -86,11 +86,11 @@ public:
     return m_BoneInfoMap;
   }
 
-  static Ref<Animation> Create(const std::string &filepath, class Model *model);
+  static Ref<Animation> Create(const std::string &filepath, class MeshSource *meshSource);
 
 private:
   void ReadHierarchyData(AnimationNode &dest, const ::aiNode *src);
-  void ReadMissingBones(const ::aiAnimation *animation, class Model *model);
+  void ReadMissingBones(const ::aiAnimation *animation, class MeshSource *meshSource);
 
   std::string m_Name;
   f32 m_Duration = 0.0f;

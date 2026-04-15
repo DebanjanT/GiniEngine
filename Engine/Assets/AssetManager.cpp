@@ -148,29 +148,31 @@ ShaderHandle AssetManager::LoadShader(const std::string& name, const std::string
     return handle;
 }
 
-ModelHandle AssetManager::LoadModel(const std::string& path) {
+MeshSourceHandle AssetManager::LoadMeshSource(const std::string& path) {
     {
         std::lock_guard<std::mutex> lock(m_AssetMutex);
-        auto it = m_Models.find(path);
-        if (it != m_Models.end() && it->second.IsValid()) {
+        auto it = m_MeshSources.find(path);
+        if (it != m_MeshSources.end() && it->second.IsValid()) {
             return it->second;
         }
     }
     
     std::string fullPath = ResolvePath(path);
     
-    ModelHandle handle;
+    MeshSourceHandle handle;
     handle.metadata.path = path;
     handle.metadata.type = LoadableAssetType::Model;
-    handle.asset = Model::Create(fullPath);
+    AssimpMeshImporter importer(fullPath);
+    auto result = importer.Import();
+    handle.asset = result.meshSource;
     
     if (handle.asset) {
         handle.metadata.loaded = true;
         std::lock_guard<std::mutex> lock(m_AssetMutex);
-        m_Models[path] = handle;
-        GINI_INFO("Loaded model: ", path);
+        m_MeshSources[path] = handle;
+        GINI_INFO("Loaded mesh source: ", path);
     } else {
-        GINI_ERROR("Failed to load model: ", path);
+        GINI_ERROR("Failed to load mesh source: ", path);
     }
     
     return handle;
@@ -192,9 +194,9 @@ void AssetManager::LoadTextureAsync(const std::string& path, std::function<void(
     }
 }
 
-void AssetManager::LoadModelAsync(const std::string& path, std::function<void(ModelHandle)> callback) {
+void AssetManager::LoadMeshSourceAsync(const std::string& path, std::function<void(MeshSourceHandle)> callback) {
     auto loadTask = [this, path, callback]() {
-        ModelHandle handle = LoadModel(path);
+        MeshSourceHandle handle = LoadMeshSource(path);
         if (callback) {
             std::lock_guard<std::mutex> lock(m_AsyncMutex);
             m_CompletionQueue.push([callback, handle]() { callback(handle); });
@@ -226,13 +228,13 @@ ShaderHandle AssetManager::GetShader(const std::string& name) {
     return ShaderHandle();
 }
 
-ModelHandle AssetManager::GetModel(const std::string& path) {
+MeshSourceHandle AssetManager::GetMeshSource(const std::string& path) {
     std::lock_guard<std::mutex> lock(m_AssetMutex);
-    auto it = m_Models.find(path);
-    if (it != m_Models.end()) {
+    auto it = m_MeshSources.find(path);
+    if (it != m_MeshSources.end()) {
         return it->second;
     }
-    return ModelHandle();
+    return MeshSourceHandle();
 }
 
 bool AssetManager::IsTextureLoaded(const std::string& path) const {
@@ -247,10 +249,10 @@ bool AssetManager::IsShaderLoaded(const std::string& name) const {
     return it != m_Shaders.end() && it->second.IsValid();
 }
 
-bool AssetManager::IsModelLoaded(const std::string& path) const {
+bool AssetManager::IsMeshSourceLoaded(const std::string& path) const {
     std::lock_guard<std::mutex> lock(m_AssetMutex);
-    auto it = m_Models.find(path);
-    return it != m_Models.end() && it->second.IsValid();
+    auto it = m_MeshSources.find(path);
+    return it != m_MeshSources.end() && it->second.IsValid();
 }
 
 void AssetManager::UnloadTexture(const std::string& path) {
@@ -263,16 +265,16 @@ void AssetManager::UnloadShader(const std::string& name) {
     m_Shaders.erase(name);
 }
 
-void AssetManager::UnloadModel(const std::string& path) {
+void AssetManager::UnloadMeshSource(const std::string& path) {
     std::lock_guard<std::mutex> lock(m_AssetMutex);
-    m_Models.erase(path);
+    m_MeshSources.erase(path);
 }
 
 void AssetManager::UnloadAll() {
     std::lock_guard<std::mutex> lock(m_AssetMutex);
     m_Textures.clear();
     m_Shaders.clear();
-    m_Models.clear();
+    m_MeshSources.clear();
     GINI_INFO("All assets unloaded");
 }
 

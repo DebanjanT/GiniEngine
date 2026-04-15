@@ -38,15 +38,32 @@ static std::wstring UTF8ToWide(const std::string &str) {
   return result;
 }
 
-// Build a Win32 filter string: "Name\0*.ext\0Name2\0*.ext2\0\0"
+// Build a Win32 filter string: "Name\0*.ext;*.ext2\0Name2\0*.ext3\0\0"
 static std::wstring BuildFilterString(
     const std::vector<FileDialogFilter> &filters) {
   std::wstring result;
   for (const auto &f : filters) {
     result += UTF8ToWide(f.name);
     result += L'\0';
-    result += L"*.";
-    result += UTF8ToWide(f.extensions);
+    
+    // Parse comma-separated extensions and format as "*.ext1;*.ext2;..."
+    std::wstring extPattern;
+    std::string ext;
+    for (size_t i = 0; i <= f.extensions.size(); ++i) {
+      if (i == f.extensions.size() || f.extensions[i] == ',') {
+        if (!ext.empty()) {
+          if (!extPattern.empty()) {
+            extPattern += L';';
+          }
+          extPattern += L"*.";
+          extPattern += UTF8ToWide(ext);
+          ext.clear();
+        }
+      } else {
+        ext += f.extensions[i];
+      }
+    }
+    result += extPattern;
     result += L'\0';
   }
   if (result.empty()) {

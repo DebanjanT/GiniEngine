@@ -38,9 +38,9 @@ void PropertiesPanel::OnImGuiRender() {
           addWorld.AddComponent<SpriteComponent>(m_SelectedEntity);
         ImGui::CloseCurrentPopup();
       }
-      if (ImGui::MenuItem("Mesh")) {
-        if (!addWorld.HasComponent<MeshComponent>(m_SelectedEntity))
-          addWorld.AddComponent<MeshComponent>(m_SelectedEntity);
+      if (ImGui::MenuItem("Static Mesh")) {
+        if (!addWorld.HasComponent<StaticMeshComponent>(m_SelectedEntity))
+          addWorld.AddComponent<StaticMeshComponent>(m_SelectedEntity);
         ImGui::CloseCurrentPopup();
       }
       if (ImGui::MenuItem("Material")) {
@@ -155,57 +155,42 @@ void PropertiesPanel::DrawComponents(Entity entity) {
     }
   }
 
-  // MeshComponent
-  if (world.HasComponent<MeshComponent>(entity)) {
+  // StaticMeshComponent
+  if (world.HasComponent<StaticMeshComponent>(entity)) {
     ImGuiTreeNodeFlags flags =
         ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed |
         ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap;
 
     bool removeMesh = false;
-    bool open = ImGui::TreeNodeEx((void *)typeid(MeshComponent).hash_code(),
-                                  flags, "Mesh");
+    bool open = ImGui::TreeNodeEx((void *)typeid(StaticMeshComponent).hash_code(),
+                                  flags, "Static Mesh");
     ImGui::SameLine(ImGui::GetWindowWidth() - 25);
     if (ImGui::Button("X##mesh", ImVec2(20, 20))) {
       removeMesh = true;
     }
 
     if (open) {
-      auto &mc = world.GetComponent<MeshComponent>(entity);
+      auto &smc = world.GetComponent<StaticMeshComponent>(entity);
 
       const char *meshTypes[] = {"None", "Cube", "Sphere", "Plane", "Cylinder", "Custom"};
-      int currentType = static_cast<int>(mc.meshType);
-      if (ImGui::Combo("Mesh Type", &currentType, meshTypes, 6)) {
-        mc.meshType = static_cast<MeshType>(currentType);
+      int currentType = static_cast<int>(smc.primitiveType);
+      if (ImGui::Combo("Primitive Type", &currentType, meshTypes, 6)) {
+        smc.primitiveType = static_cast<MeshType>(currentType);
       }
 
-      if (mc.meshType == MeshType::Custom) {
-        char pathBuf[512];
-        std::strncpy(pathBuf, mc.modelPath.c_str(), sizeof(pathBuf));
-        pathBuf[sizeof(pathBuf) - 1] = '\0';
-        if (ImGui::InputText("Model Path", pathBuf, sizeof(pathBuf))) {
-          mc.modelPath = pathBuf;
-        }
-        if (ImGui::BeginDragDropTarget()) {
-          if (const ImGuiPayload *payload =
-                  ImGui::AcceptDragDropPayload(AssetBrowserPanel::PAYLOAD_MESH)) {
-            mc.modelPath = std::string(static_cast<const char *>(payload->Data));
-          }
-          if (const ImGuiPayload *payload =
-                  ImGui::AcceptDragDropPayload(AssetBrowserPanel::PAYLOAD_ASSET)) {
-            mc.modelPath = std::string(static_cast<const char *>(payload->Data));
-          }
-          ImGui::EndDragDropTarget();
-        }
+      if (smc.meshSourceHandle != 0) {
+        ImGui::Text("MeshSource Handle: %llu", smc.meshSourceHandle);
       }
 
-      ImGui::Checkbox("Cast Shadows", &mc.castShadows);
-      ImGui::Checkbox("Receive Shadows", &mc.receiveShadows);
+      ImGui::Checkbox("Cast Shadows", &smc.castShadows);
+      ImGui::Checkbox("Receive Shadows", &smc.receiveShadows);
+      ImGui::Checkbox("Visible", &smc.visible);
 
       ImGui::TreePop();
     }
 
     if (removeMesh) {
-      world.RemoveComponent<MeshComponent>(entity);
+      world.RemoveComponent<StaticMeshComponent>(entity);
     }
   }
 
@@ -233,29 +218,18 @@ void PropertiesPanel::DrawComponents(Entity entity) {
       ImGui::ColorEdit3("Emissive", glm::value_ptr(mat.emissive));
 
       ImGui::Separator();
-      ImGui::Text("Textures");
+      ImGui::Text("Texture Handles (Asset IDs)");
 
-      auto drawTexturePath = [](const char *label, std::string &path) {
-        char buf[512];
-        std::strncpy(buf, path.c_str(), sizeof(buf));
-        buf[sizeof(buf) - 1] = '\0';
-        if (ImGui::InputText(label, buf, sizeof(buf))) {
-          path = buf;
-        }
-        if (ImGui::BeginDragDropTarget()) {
-          if (const ImGuiPayload *payload =
-                  ImGui::AcceptDragDropPayload(AssetBrowserPanel::PAYLOAD_TEXTURE)) {
-            path = std::string(static_cast<const char *>(payload->Data));
-          }
-          ImGui::EndDragDropTarget();
-        }
+      auto drawTextureHandle = [](const char *label, u64 &handle) {
+        ImGui::Text("%s: %llu", label, handle);
+        // TODO: Add texture picker UI
       };
 
-      drawTexturePath("Albedo Map", mat.albedoTexturePath);
-      drawTexturePath("Normal Map", mat.normalTexturePath);
-      drawTexturePath("Metallic Map", mat.metallicTexturePath);
-      drawTexturePath("Roughness Map", mat.roughnessTexturePath);
-      drawTexturePath("AO Map", mat.aoTexturePath);
+      drawTextureHandle("Albedo Map", mat.albedoTextureHandle);
+      drawTextureHandle("Normal Map", mat.normalTextureHandle);
+      drawTextureHandle("Metallic Map", mat.metallicTextureHandle);
+      drawTextureHandle("Roughness Map", mat.roughnessTextureHandle);
+      drawTextureHandle("AO Map", mat.aoTextureHandle);
 
       ImGui::TreePop();
     }

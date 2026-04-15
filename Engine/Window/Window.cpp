@@ -188,6 +188,10 @@ void Window::SetupCallbacks() {
 }
 
 void Window::Shutdown() {
+  if (m_SharedContextWindow) {
+    glfwDestroyWindow(m_SharedContextWindow);
+    m_SharedContextWindow = nullptr;
+  }
   if (m_Window) {
     glfwDestroyWindow(m_Window);
     m_Window = nullptr;
@@ -210,6 +214,39 @@ void Window::SwapBuffers() { glfwSwapBuffers(m_Window); }
 void Window::MakeContextCurrent() { glfwMakeContextCurrent(m_Window); }
 
 void Window::DetachContext() { glfwMakeContextCurrent(nullptr); }
+
+void Window::CreateSharedContext() {
+  if (!m_Window) {
+    GINI_ERROR("Cannot create shared context: main window not created");
+    return;
+  }
+
+  // Create a hidden window for the shared context, sharing with the main window's context
+  glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+#ifdef __APPLE__
+  glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+#endif
+
+  // Pass m_Window as the share parameter to share OpenGL resources
+  m_SharedContextWindow = glfwCreateWindow(1, 1, "SharedContext", nullptr, m_Window);
+  if (!m_SharedContextWindow) {
+    GINI_ERROR("Failed to create shared context window");
+    return;
+  }
+
+  GINI_INFO("Shared OpenGL context created for render thread");
+}
+
+void Window::MakeSharedContextCurrent() {
+  if (m_SharedContextWindow) {
+    glfwMakeContextCurrent(m_SharedContextWindow);
+  } else {
+    GINI_ERROR("Shared context window not created");
+  }
+}
 
 bool Window::ShouldClose() const { return glfwWindowShouldClose(m_Window); }
 

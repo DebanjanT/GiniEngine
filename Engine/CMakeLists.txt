@@ -23,7 +23,6 @@ set(ENGINE_SOURCES
 
     # Renderer 3D
     Renderer/Mesh.cpp
-    Renderer/Model.cpp
     Renderer/Camera3D.cpp
     Renderer/Light.cpp
     Renderer/Renderer3D.cpp
@@ -76,9 +75,14 @@ set(ENGINE_SOURCES
 
     # Asset
     Asset/AssetRegistry.cpp
+    Asset/AssimpMeshImporter.cpp
 
     # Material
     Renderer/Material.cpp
+    Renderer/MaterialAsset.cpp
+
+    # MeshSource (Hazel-style mesh system)
+    Renderer/MeshSource.cpp
 
     # Post-processing
     Renderer/PostProcess.cpp
@@ -92,8 +96,6 @@ set(ENGINE_SOURCES
     # SSAO
     Renderer/SSAO.cpp
 
-    # Model Cache
-    Renderer/ModelCache.cpp
 )
 
 set(ENGINE_HEADERS
@@ -123,10 +125,17 @@ set(ENGINE_HEADERS
 
     # Renderer 3D
     Renderer/Mesh.h
-    Renderer/Model.h
     Renderer/Camera3D.h
     Renderer/Light.h
     Renderer/Renderer3D.h
+    Renderer/MeshSource.h
+    Renderer/MeshNode.h
+    Renderer/Submesh.h
+    Renderer/MaterialAsset.h
+
+    # Asset
+    Asset/AssetRegistry.h
+    Asset/AssimpMeshImporter.h
 
     # ECS
     ECS/World.h
@@ -163,10 +172,16 @@ set(ENGINE_HEADERS
 )
 
 add_library(GiniEngine STATIC ${ENGINE_SOURCES} ${ENGINE_HEADERS})
+# add Vulkan library
+find_package(Vulkan REQUIRED)
+
 
 target_include_directories(GiniEngine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/..
+    ${CMAKE_CURRENT_SOURCE_DIR}/../
+    $<TARGET_PROPERTY:EnTT::EnTT,INTERFACE_INCLUDE_DIRECTORIES>
+
+
 )
 
 target_link_libraries(GiniEngine PUBLIC
@@ -179,20 +194,22 @@ target_link_libraries(GiniEngine PUBLIC
     OpenAL::OpenAL
     assimp::assimp
     yaml-cpp::yaml-cpp
+    # Link Vulkan
+    Vulkan::Vulkan
 )
 
-# Precompiled header for faster builds
-target_precompile_headers(GiniEngine PRIVATE
-    <vector>
-    <string>
-    <memory>
-    <unordered_map>
-    <functional>
-    <algorithm>
-    <cmath>
-    <glm/glm.hpp>
-    <entt/entt.hpp>
-)
+# Precompiled header for faster builds (temporarily disabled due to compilation issues)
+# target_precompile_headers(GiniEngine PRIVATE
+#     <vector>
+#     <string>
+#     <memory>
+#     <unordered_map>
+#     <functional>
+#     <algorithm>
+#     <cmath>
+#     <glm/glm.hpp>
+#     <entt/entt.hpp>
+# )
 
 # Set properties
 set_target_properties(GiniEngine PROPERTIES

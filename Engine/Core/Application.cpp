@@ -35,7 +35,16 @@ Application::Application(const EngineConfig& config) : m_Config(config) {
         NetworkManager::Get().InitClient();
     }
 
+    // Disable render thread on Windows due to WGL context sharing limitations
+#ifdef _WIN32
     if (m_Config.enableRenderThread) {
+        GINI_WARN("Render thread is not supported on Windows due to WGL context sharing limitations. Disabling.");
+        m_Config.enableRenderThread = false;
+    }
+#endif
+
+    if (m_Config.enableRenderThread) {
+        m_Window->CreateSharedContext();
         m_RenderThread.Start();
     }
 }
@@ -53,15 +62,19 @@ Application::~Application() {
 }
 
 void Application::Run() {
+    // Always initialize main thread systems (ImGui, etc.)
+    OnInit();
+
     if (m_Config.enableRenderThread && m_RenderThread.IsRunning()) {
-        m_Window->DetachContext();
+        // Initialize render thread systems (3D renderer, etc.) using shared context
         m_RenderThread.SubmitAndWait([this]() {
-            m_Window->MakeContextCurrent();
-            OnInit();
+            m_Window->MakeSharedContextCurrent();
+            OnRenderThreadInit();
             return 0;
         });
     } else {
-        OnInit();
+        // Initialize render systems on main thread when render thread is disabled
+        OnRenderThreadInit();
     }
     
     ThreadProfiler::Get().RegisterThread("MainThread",
@@ -95,6 +108,7 @@ void Application::Run() {
             }
             
             if (m_Config.enableRenderThread && m_RenderThread.IsRunning()) {
+                // Submit 3D rendering to render thread using shared context
                 m_RenderThread.SubmitAndWait([this]() -> int {
                     auto renderStart = std::chrono::steady_clock::now();
                     u32 viewportWidth = 0;
@@ -114,14 +128,22 @@ void Application::Run() {
                     }
 
                     OnRender();
-                    OnImGuiRender();
-                    m_Window->SwapBuffers();
+                    glFinish(); // Ensure all rendering commands complete before main thread uses results
                     auto renderEnd = std::chrono::steady_clock::now();
                     ThreadProfiler::Get().SetRenderTimeMs(
                         std::chrono::duration<f64, std::milli>(renderEnd - renderStart)
                             .count());
                     return 0;
                 });
+
+                // Render ImGui and swap buffers on main thread
+                auto imguiStart = std::chrono::steady_clock::now();
+                OnImGuiRender();
+                m_Window->SwapBuffers();
+                auto imguiEnd = std::chrono::steady_clock::now();
+                ThreadProfiler::Get().SetRenderTimeMs(
+                    std::chrono::duration<f64, std::milli>(imguiEnd - imguiStart)
+                        .count());
             } else {
                 auto renderStart = std::chrono::steady_clock::now();
                 OnRender();
@@ -137,13 +159,11 @@ void Application::Run() {
 
     if (m_Config.enableRenderThread && m_RenderThread.IsRunning()) {
         m_RenderThread.SubmitAndWait([this]() {
-            OnShutdown();
-            m_Window->DetachContext();
+            OnRenderThreadShutdown();
             return 0;
         });
-    } else {
-        OnShutdown();
     }
+    OnShutdown();
 }
 
 void Application::OnEventInternal(Event& event) {

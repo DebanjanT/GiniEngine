@@ -14,7 +14,10 @@ enum class AssetType {
   Unknown = 0,
   Texture,
   Material,
+  MaterialAsset,  // New: Serializable PBR material
   Mesh,
+  MeshSource,     // New: Raw mesh data from imported files
+  StaticMesh,     // New: Static mesh instance
   Scene,
   Audio,
   Script,

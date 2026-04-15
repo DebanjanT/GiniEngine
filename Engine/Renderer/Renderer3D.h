@@ -1,14 +1,30 @@
 #pragma once
 
 #include "Core/Types.h"
+#include "ECS/Components.h"
 #include "Renderer/Camera3D.h"
 #include "Renderer/Light.h"
+#include "Renderer/Material.h"
 #include "Renderer/Mesh.h"
-#include "Renderer/Model.h"
+#include "Renderer/MeshSource.h"
+#include "Renderer/MaterialAsset.h"
 #include "Renderer/Shader.h"
 #include "Renderer/Texture.h"
 
 namespace Gini {
+
+// Draw command for MeshSource-based rendering (Hazel-style)
+struct MeshDrawCommand {
+  Ref<MeshSource> meshSource;
+  Ref<MaterialTable> materialTable;  // Can be null for material override
+  u32 submeshIndex = 0;
+  Mat4 transform{1.0f};
+  bool isRigged = false;
+  
+  // For skeletal animation
+  u32 boneTransformsOffset = 0;
+  u32 boneTransformsStride = 0;
+};
 
 struct Renderer3DStats {
   u32 drawCalls = 0;
@@ -46,12 +62,6 @@ public:
   static void DrawMesh(const Ref<Mesh> &mesh, const Mat4 &transform,
                        const Material3D &material);
 
-  // Model drawing
-  static void DrawModel(const Ref<Model> &model, const Mat4 &transform);
-  static void DrawModel(const Ref<Model> &model, const Vec3 &position,
-                        const Vec3 &rotation = Vec3(0.0f),
-                        const Vec3 &scale = Vec3(1.0f));
-
   // Primitive shapes
   static void DrawCube(const Vec3 &position, const Vec3 &size,
                        const Color &color);
@@ -72,9 +82,26 @@ public:
                              const Color &color);
   static void DrawGrid(f32 size, u32 divisions, const Color &color);
 
-  // Skinned model drawing
-  static void DrawSkinnedModel(const Ref<Model> &model, const Mat4 &transform,
-                               const std::vector<Mat4> &boneMatrices);
+  // MeshSource-based rendering (Hazel-style)
+  // Renders a submesh using materials from MaterialTable
+  static void RenderMesh(const MeshDrawCommand &drawCmd);
+  
+  // Renders a submesh with explicit material override
+  static void RenderMesh(const MeshDrawCommand &drawCmd,
+                         Ref<MaterialAsset> materialOverride);
+  
+  // Renders all submeshes of a MeshSource
+  static void RenderMeshSource(Ref<MeshSource> meshSource, const Mat4 &transform,
+                               Ref<MaterialTable> materials = nullptr);
+  
+  // Renders a StaticMeshComponent
+  static void RenderStaticMesh(u64 meshSourceHandle, const Mat4 &transform,
+                               const std::vector<u32> &submeshIndices,
+                               const std::vector<u64> &materialOverrides);
+
+  // Renders a primitive mesh with material
+  static void RenderPrimitive(MeshType primitiveType, const Mat4 &transform,
+                              const Material3D &material);
 
   // Shaders
   static Ref<Shader> GetPBRShader();

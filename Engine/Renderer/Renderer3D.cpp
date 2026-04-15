@@ -2,6 +2,7 @@
 #include "Core/Logger.h"
 #include "Renderer/IBL.h"
 #include "Renderer/ShadowMap.h"
+#include "Renderer/Submesh.h"
 
 #include <algorithm>
 
@@ -300,7 +301,8 @@ void main() {
     if (u_HasAlbedoMap == 1) {
         // Use albedo texture directly - GLB embedded textures are already in correct color space
         albedo *= texture(u_AlbedoMap, texCoords).rgb;
-    } else {
+    } else if (length(v_Color.rgb) > 0.01) {
+        // Only multiply by vertex color if it's meaningful (not black)
         // Many FBX assets rely on vertex colors when no albedo map exists.
         albedo *= v_Color.rgb;
     }
@@ -862,36 +864,6 @@ void Renderer3D::DrawMesh(const Ref<Mesh> &mesh, const Mat4 &transform,
   s_Data->stats.meshesDrawn++;
 }
 
-void Renderer3D::DrawModel(const Ref<Model> &model, const Mat4 &transform) {
-  if (!model)
-    return;
-
-  const auto &meshes = model->GetMeshes();
-  const auto &materials = model->GetMaterials();
-  const auto &materialIndices = model->GetMeshMaterialIndices();
-
-  for (u32 i = 0; i < meshes.size(); i++) {
-    if (i < materialIndices.size() && materialIndices[i] >= 0 &&
-        materialIndices[i] < static_cast<i32>(materials.size())) {
-      DrawMesh(meshes[i], transform, materials[materialIndices[i]]);
-    } else {
-      Material3D defaultMat;
-      DrawMesh(meshes[i], transform, defaultMat);
-    }
-  }
-}
-
-void Renderer3D::DrawModel(const Ref<Model> &model, const Vec3 &position,
-                           const Vec3 &rotation, const Vec3 &scale) {
-  Mat4 transform = glm::translate(Mat4(1.0f), position);
-  transform = glm::rotate(transform, glm::radians(rotation.x), Vec3(1, 0, 0));
-  transform = glm::rotate(transform, glm::radians(rotation.y), Vec3(0, 1, 0));
-  transform = glm::rotate(transform, glm::radians(rotation.z), Vec3(0, 0, 1));
-  transform = glm::scale(transform, scale);
-
-  DrawModel(model, transform);
-}
-
 void Renderer3D::DrawCube(const Vec3 &position, const Vec3 &size,
                           const Color &color) {
   Mat4 transform = glm::translate(Mat4(1.0f), position);
@@ -920,90 +892,29 @@ void Renderer3D::DrawPlane(const Vec3 &position, const Vec2 &size,
   DrawMesh(s_Data->planeMesh, transform, color);
 }
 
-void Renderer3D::DrawSkinnedModel(const Ref<Model> &model,
-                                  const Mat4 &transform,
-                                  const std::vector<Mat4> &boneMatrices) {
-  if (!model)
-    return;
-
-  const auto &meshes = model->GetMeshes();
-  const auto &materials = model->GetMaterials();
-  const auto &materialIndices = model->GetMeshMaterialIndices();
-
-  auto shader = s_Data->skinnedPBRShader;
-  shader->Bind();
-  shader->SetMat4("u_Model", transform);
-  shader->SetMat4("u_View", s_Data->viewMatrix);
-  shader->SetMat4("u_Projection", s_Data->projectionMatrix);
-  shader->SetMat3("u_NormalMatrix",
-                  glm::transpose(glm::inverse(Mat3(transform))));
-  shader->SetVec3("u_CameraPos", s_Data->cameraPosition);
-
-  if (!boneMatrices.empty()) {
-    shader->SetInt("u_HasBones", 1);
-    u32 count = static_cast<u32>(std::min(boneMatrices.size(), size_t(100)));
-    for (u32 i = 0; i < count; i++) {
-      std::string uniformName = "u_BoneMatrices[" + std::to_string(i) + "]";
-      shader->SetMat4(uniformName, boneMatrices[i]);
-    }
-  } else {
-    shader->SetInt("u_HasBones", 0);
+void Renderer3D::RenderPrimitive(MeshType primitiveType, const Mat4 &transform,
+                                 const Material3D &material) {
+  Ref<Mesh> mesh;
+  switch (primitiveType) {
+    case MeshType::Cube:
+      mesh = s_Data->cubeMesh;
+      break;
+    case MeshType::Sphere:
+      mesh = s_Data->sphereMesh;
+      break;
+    case MeshType::Plane:
+      mesh = s_Data->planeMesh;
+      break;
+    case MeshType::Cylinder:
+      mesh = Mesh::CreateCylinder();
+      break;
+    default:
+      mesh = s_Data->cubeMesh;
+      break;
   }
-
-  LightManager::Get().UploadToShader(shader.get());
-  IBL::BindIBLTextures(shader.get(), 10);
-  if (ShadowMap::IsInitialized()) {
-    ShadowMap::BindShadowMaps(shader.get(), 13);
-  } else {
-    shader->SetInt("u_HasShadows", 0);
-  }
-
-  for (u32 i = 0; i < meshes.size(); i++) {
-    Material3D mat;
-    if (i < materialIndices.size() && materialIndices[i] >= 0 &&
-        materialIndices[i] < static_cast<i32>(materials.size())) {
-      mat = materials[materialIndices[i]];
-    }
-
-    shader->SetVec3("u_Material_albedo", mat.albedo);
-    shader->SetFloat("u_Material_metallic", mat.metallic);
-    shader->SetFloat("u_Material_roughness", mat.roughness);
-    shader->SetFloat("u_Material_ao", mat.ao);
-    shader->SetVec3("u_Material_emissive", mat.emissive);
-
-    u32 texUnit = 0;
-    bool usePackedMetalRough = false;
-    auto bindTex = [&](Ref<Texture2D> &tex, const char *mapUniform,
-                       const char *hasUniform) {
-      if (tex) {
-        tex->Bind(texUnit);
-        shader->SetInt(mapUniform, texUnit++);
-        shader->SetInt(hasUniform, 1);
-      } else {
-        shader->SetInt(hasUniform, 0);
-      }
-    };
-    bindTex(mat.albedoMap, "u_AlbedoMap", "u_HasAlbedoMap");
-    bindTex(mat.normalMap, "u_NormalMap", "u_HasNormalMap");
-    bindTex(mat.metallicMap, "u_MetallicMap", "u_HasMetallicMap");
-    bindTex(mat.roughnessMap, "u_RoughnessMap", "u_HasRoughnessMap");
-    if (mat.metallicMap && mat.roughnessMap &&
-        mat.metallicMap->GetID() == mat.roughnessMap->GetID()) {
-      usePackedMetalRough = true;
-    }
-    shader->SetInt("u_UsePackedMetalRough", usePackedMetalRough ? 1 : 0);
-    bindTex(mat.aoMap, "u_AOMap", "u_HasAOMap");
-    bindTex(mat.heightMap, "u_HeightMap", "u_HasHeightMap");
-    if (!mat.heightMap) {
-      shader->SetInt("u_HasHeightMap", 0);
-    }
-
-    meshes[i]->Draw();
-
-    s_Data->stats.drawCalls++;
-    s_Data->stats.triangles += meshes[i]->GetIndexCount() / 3;
-    s_Data->stats.vertices += meshes[i]->GetVertexCount();
-    s_Data->stats.meshesDrawn++;
+  
+  if (mesh) {
+    DrawMesh(mesh, transform, material);
   }
 }
 
@@ -1105,6 +1016,281 @@ void Renderer3D::DrawWireSphere(const Vec3 &position, f32 radius,
 
 void Renderer3D::DrawGrid(f32 size, u32 divisions, const Color &color) {
   // TODO: Implement grid rendering
+}
+
+// MeshSource-based rendering (Hazel-style)
+void Renderer3D::RenderMesh(const MeshDrawCommand &drawCmd) {
+  if (!drawCmd.meshSource || !drawCmd.meshSource->IsValid()) {
+    return;
+  }
+
+  const auto &submeshes = drawCmd.meshSource->GetSubmeshes();
+  if (drawCmd.submeshIndex >= submeshes.size()) {
+    return;
+  }
+
+  const Submesh &submesh = submeshes[drawCmd.submeshIndex];
+
+  // Get material
+  Ref<MaterialAsset> materialAsset;
+  if (drawCmd.materialTable && drawCmd.materialTable->HasMaterial(submesh.MaterialIndex)) {
+    u64 matHandle = drawCmd.materialTable->GetMaterial(submesh.MaterialIndex);
+    materialAsset = MaterialAssetLibrary::Get().Get(matHandle);
+  }
+
+  if (!materialAsset) {
+    // Try to get default material from MeshSource
+    const auto &matHandles = drawCmd.meshSource->GetMaterialHandles();
+    if (submesh.MaterialIndex < matHandles.size()) {
+      materialAsset = MaterialAssetLibrary::Get().Get(matHandles[submesh.MaterialIndex]);
+    }
+  }
+
+  // Calculate final transform
+  Mat4 finalTransform = drawCmd.transform * submesh.Transform;
+
+  // Setup rendering state
+  glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_BACK);
+  glFrontFace(GL_CCW);
+
+  s_Data->pbrShader->Bind();
+  s_Data->pbrShader->SetMat4("u_Model", finalTransform);
+  s_Data->pbrShader->SetMat4("u_View", s_Data->viewMatrix);
+  s_Data->pbrShader->SetMat4("u_Projection", s_Data->projectionMatrix);
+  s_Data->pbrShader->SetMat3("u_NormalMatrix",
+                             glm::transpose(glm::inverse(Mat3(finalTransform))));
+  s_Data->pbrShader->SetVec3("u_CameraPos", s_Data->cameraPosition);
+
+  // Bind material
+  if (materialAsset) {
+    auto material = materialAsset->GetMaterial();
+    if (material) {
+      material->Bind(s_Data->pbrShader);
+    }
+  } else {
+    // Default material properties
+    s_Data->pbrShader->SetVec3("u_Material_albedo", Vec3(0.8f));
+    s_Data->pbrShader->SetFloat("u_Material_metallic", 0.0f);
+    s_Data->pbrShader->SetFloat("u_Material_roughness", 0.5f);
+    s_Data->pbrShader->SetFloat("u_Material_ao", 1.0f);
+    s_Data->pbrShader->SetVec3("u_Material_emissive", Vec3(0.0f));
+    s_Data->pbrShader->SetInt("u_HasAlbedoMap", 0);
+    s_Data->pbrShader->SetInt("u_HasNormalMap", 0);
+    s_Data->pbrShader->SetInt("u_HasMetallicMap", 0);
+    s_Data->pbrShader->SetInt("u_HasRoughnessMap", 0);
+    s_Data->pbrShader->SetInt("u_HasAOMap", 0);
+    s_Data->pbrShader->SetInt("u_HasHeightMap", 0);
+  }
+
+  // Upload lights
+  LightManager::Get().UploadToShader(s_Data->pbrShader.get());
+
+  // Bind IBL textures
+  IBL::BindIBLTextures(s_Data->pbrShader.get(), 10);
+
+  // Bind shadow maps
+  if (ShadowMap::IsInitialized()) {
+    ShadowMap::BindShadowMaps(s_Data->pbrShader.get(), 13);
+  } else {
+    s_Data->pbrShader->SetInt("u_HasShadows", 0);
+  }
+
+  // Draw submesh
+  drawCmd.meshSource->Bind();
+  drawCmd.meshSource->DrawSubmesh(drawCmd.submeshIndex);
+
+  s_Data->stats.drawCalls++;
+  s_Data->stats.triangles += submesh.IndexCount / 3;
+  s_Data->stats.vertices += submesh.VertexCount;
+  s_Data->stats.meshesDrawn++;
+}
+
+void Renderer3D::RenderMesh(const MeshDrawCommand &drawCmd,
+                            Ref<MaterialAsset> materialOverride) {
+  if (!drawCmd.meshSource || !drawCmd.meshSource->IsValid()) {
+    return;
+  }
+
+  const auto &submeshes = drawCmd.meshSource->GetSubmeshes();
+  if (drawCmd.submeshIndex >= submeshes.size()) {
+    return;
+  }
+
+  const Submesh &submesh = submeshes[drawCmd.submeshIndex];
+  Mat4 finalTransform = drawCmd.transform * submesh.Transform;
+
+  // Setup rendering state
+  glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+  glEnable(GL_CULL_FACE);
+  glCullFace(GL_BACK);
+  glFrontFace(GL_CCW);
+
+  s_Data->pbrShader->Bind();
+  s_Data->pbrShader->SetMat4("u_Model", finalTransform);
+  s_Data->pbrShader->SetMat4("u_View", s_Data->viewMatrix);
+  s_Data->pbrShader->SetMat4("u_Projection", s_Data->projectionMatrix);
+  s_Data->pbrShader->SetMat3("u_NormalMatrix",
+                             glm::transpose(glm::inverse(Mat3(finalTransform))));
+  s_Data->pbrShader->SetVec3("u_CameraPos", s_Data->cameraPosition);
+
+  // Bind override material
+  if (materialOverride) {
+    auto material = materialOverride->GetMaterial();
+    if (material) {
+      material->Bind(s_Data->pbrShader);
+    }
+  }
+
+  // Upload lights
+  LightManager::Get().UploadToShader(s_Data->pbrShader.get());
+
+  // Bind IBL and shadows
+  IBL::BindIBLTextures(s_Data->pbrShader.get(), 10);
+  if (ShadowMap::IsInitialized()) {
+    ShadowMap::BindShadowMaps(s_Data->pbrShader.get(), 13);
+  } else {
+    s_Data->pbrShader->SetInt("u_HasShadows", 0);
+  }
+
+  // Draw submesh
+  drawCmd.meshSource->Bind();
+  drawCmd.meshSource->DrawSubmesh(drawCmd.submeshIndex);
+
+  s_Data->stats.drawCalls++;
+  s_Data->stats.triangles += submesh.IndexCount / 3;
+  s_Data->stats.vertices += submesh.VertexCount;
+  s_Data->stats.meshesDrawn++;
+}
+
+void Renderer3D::RenderMeshSource(Ref<MeshSource> meshSource,
+                                  const Mat4 &transform,
+                                  Ref<MaterialTable> materials) {
+  if (!meshSource || !meshSource->IsValid()) {
+    return;
+  }
+
+  meshSource->Bind();
+
+  const auto &submeshes = meshSource->GetSubmeshes();
+  for (u32 i = 0; i < submeshes.size(); ++i) {
+    MeshDrawCommand cmd;
+    cmd.meshSource = meshSource;
+    cmd.materialTable = materials;
+    cmd.submeshIndex = i;
+    cmd.transform = transform;
+    cmd.isRigged = submeshes[i].IsRigged;
+
+    RenderMesh(cmd);
+  }
+
+  meshSource->Unbind();
+}
+
+void Renderer3D::RenderStaticMesh(u64 meshSourceHandle, const Mat4 &transform,
+                                  const std::vector<u32> &submeshIndices,
+                                  const std::vector<u64> &materialOverrides) {
+  auto meshSource = MeshSourceLibrary::Get().Get(meshSourceHandle);
+  if (!meshSource || !meshSource->IsValid()) {
+    return;
+  }
+
+  meshSource->Bind();
+
+  const auto &submeshes = meshSource->GetSubmeshes();
+
+  // Determine which submeshes to render
+  std::vector<u32> indicesToRender;
+  if (submeshIndices.empty()) {
+    // Render all submeshes
+    for (u32 i = 0; i < submeshes.size(); ++i) {
+      indicesToRender.push_back(i);
+    }
+  } else {
+    indicesToRender = submeshIndices;
+  }
+
+  for (u32 submeshIdx : indicesToRender) {
+    if (submeshIdx >= submeshes.size()) {
+      continue;
+    }
+
+    const Submesh &submesh = submeshes[submeshIdx];
+    Mat4 finalTransform = transform * submesh.Transform;
+
+    // Get material override or default
+    Ref<MaterialAsset> materialAsset;
+    if (submesh.MaterialIndex < materialOverrides.size() &&
+        materialOverrides[submesh.MaterialIndex] != 0) {
+      materialAsset =
+          MaterialAssetLibrary::Get().Get(materialOverrides[submesh.MaterialIndex]);
+    }
+
+    if (!materialAsset) {
+      // Use default material from MeshSource
+      const auto &matHandles = meshSource->GetMaterialHandles();
+      if (submesh.MaterialIndex < matHandles.size()) {
+        materialAsset = MaterialAssetLibrary::Get().Get(matHandles[submesh.MaterialIndex]);
+      }
+    }
+
+    // Setup rendering
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
+
+    s_Data->pbrShader->Bind();
+    s_Data->pbrShader->SetMat4("u_Model", finalTransform);
+    s_Data->pbrShader->SetMat4("u_View", s_Data->viewMatrix);
+    s_Data->pbrShader->SetMat4("u_Projection", s_Data->projectionMatrix);
+    s_Data->pbrShader->SetMat3("u_NormalMatrix",
+                               glm::transpose(glm::inverse(Mat3(finalTransform))));
+    s_Data->pbrShader->SetVec3("u_CameraPos", s_Data->cameraPosition);
+
+    // Bind material
+    if (materialAsset) {
+      auto material = materialAsset->GetMaterial();
+      if (material) {
+        material->Bind(s_Data->pbrShader);
+      }
+    } else {
+      // Default material
+      s_Data->pbrShader->SetVec3("u_Material_albedo", Vec3(0.8f));
+      s_Data->pbrShader->SetFloat("u_Material_metallic", 0.0f);
+      s_Data->pbrShader->SetFloat("u_Material_roughness", 0.5f);
+      s_Data->pbrShader->SetFloat("u_Material_ao", 1.0f);
+      s_Data->pbrShader->SetVec3("u_Material_emissive", Vec3(0.0f));
+      s_Data->pbrShader->SetInt("u_HasAlbedoMap", 0);
+      s_Data->pbrShader->SetInt("u_HasNormalMap", 0);
+      s_Data->pbrShader->SetInt("u_HasMetallicMap", 0);
+      s_Data->pbrShader->SetInt("u_HasRoughnessMap", 0);
+      s_Data->pbrShader->SetInt("u_HasAOMap", 0);
+      s_Data->pbrShader->SetInt("u_HasHeightMap", 0);
+    }
+
+    // Upload lights
+    LightManager::Get().UploadToShader(s_Data->pbrShader.get());
+
+    // Bind IBL and shadows
+    IBL::BindIBLTextures(s_Data->pbrShader.get(), 10);
+    if (ShadowMap::IsInitialized()) {
+      ShadowMap::BindShadowMaps(s_Data->pbrShader.get(), 13);
+    } else {
+      s_Data->pbrShader->SetInt("u_HasShadows", 0);
+    }
+
+    // Draw submesh
+    meshSource->DrawSubmesh(submeshIdx);
+
+    s_Data->stats.drawCalls++;
+    s_Data->stats.triangles += submesh.IndexCount / 3;
+    s_Data->stats.vertices += submesh.VertexCount;
+    s_Data->stats.meshesDrawn++;
+  }
+
+  meshSource->Unbind();
 }
 
 } // namespace Gini

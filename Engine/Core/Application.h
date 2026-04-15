@@ -19,6 +19,8 @@ public:
     
     // Override these in your game
     virtual void OnInit() {}
+    virtual void OnRenderThreadInit() {}
+    virtual void OnRenderThreadShutdown() {}
     virtual void OnShutdown() {}
     virtual void OnUpdate(f32 deltaTime) {}
     virtual void OnFixedUpdate(f32 fixedDeltaTime) {}

@@ -7,6 +7,7 @@
 #include <mutex>
 #include <chrono>
 #include <iomanip>
+#include <functional>
 
 namespace Gini {
 
@@ -19,6 +20,9 @@ enum class LogLevel {
     Fatal
 };
 
+// Callback function type for log messages
+using LogCallback = std::function<void(LogLevel, const std::string&)>;
+
 class Logger {
 public:
     static Logger& Get() {
@@ -29,6 +33,8 @@ public:
     void SetLevel(LogLevel level) { m_Level = level; }
     void SetOutputFile(const std::string& path);
     void EnableConsole(bool enable) { m_ConsoleEnabled = enable; }
+    
+    void SetLogCallback(LogCallback callback) { m_LogCallback = callback; }
     
     template<typename... Args>
     void Log(LogLevel level, const char* file, int line, Args&&... args) {
@@ -52,6 +58,11 @@ public:
         if (m_FileStream.is_open()) {
             m_FileStream << message;
             m_FileStream.flush();
+        }
+        
+        // Call registered callback (e.g., for ConsolePanel)
+        if (m_LogCallback) {
+            m_LogCallback(level, message);
         }
     }
     
@@ -109,6 +120,7 @@ private:
     bool m_ConsoleEnabled = true;
     std::ofstream m_FileStream;
     std::mutex m_Mutex;
+    LogCallback m_LogCallback;
 };
 
 // Logging macros

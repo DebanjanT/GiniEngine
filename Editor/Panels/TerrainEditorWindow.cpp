@@ -536,7 +536,7 @@ void TerrainEditorWindow::DrawLayersPanel() {
         mat.name = pbrMat->GetName();
         mat.albedoTexture = pbrMat->GetAlbedoTexture();
         mat.normalTexture = pbrMat->GetNormalTexture();
-        mat.albedoPath = materialPath;
+        mat.albedoPath = materialPath.string();
         mat.roughness = pbrMat->GetRoughness();
         mat.metallic = pbrMat->GetMetallic();
 

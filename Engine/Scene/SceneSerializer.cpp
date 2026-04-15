@@ -1,7 +1,6 @@
 #include "SceneSerializer.h"
 #include "Core/Logger.h"
 #include "ECS/Components.h"
-#include "Renderer/ModelCache.h"
 
 #include <fstream>
 #include <sstream>
@@ -99,16 +98,17 @@ void SceneSerializer::SerializeEntity(void *emitterPtr, Entity entity) {
     out << YAML::EndMap;
   }
 
-  // MeshComponent
-  if (world.HasComponent<MeshComponent>(entity)) {
-    out << YAML::Key << "MeshComponent";
+  // StaticMeshComponent
+  if (world.HasComponent<StaticMeshComponent>(entity)) {
+    out << YAML::Key << "StaticMeshComponent";
     out << YAML::BeginMap;
-    auto &mc = world.GetComponent<MeshComponent>(entity);
-    out << YAML::Key << "MeshType" << YAML::Value
-        << static_cast<int>(mc.meshType);
-    out << YAML::Key << "ModelPath" << YAML::Value << mc.modelPath;
-    out << YAML::Key << "CastShadows" << YAML::Value << mc.castShadows;
-    out << YAML::Key << "ReceiveShadows" << YAML::Value << mc.receiveShadows;
+    auto &smc = world.GetComponent<StaticMeshComponent>(entity);
+    out << YAML::Key << "MeshSourceHandle" << YAML::Value << smc.meshSourceHandle;
+    out << YAML::Key << "PrimitiveType" << YAML::Value
+        << static_cast<int>(smc.primitiveType);
+    out << YAML::Key << "CastShadows" << YAML::Value << smc.castShadows;
+    out << YAML::Key << "ReceiveShadows" << YAML::Value << smc.receiveShadows;
+    out << YAML::Key << "Visible" << YAML::Value << smc.visible;
     out << YAML::EndMap;
   }
 
@@ -122,15 +122,11 @@ void SceneSerializer::SerializeEntity(void *emitterPtr, Entity entity) {
     out << YAML::Key << "Roughness" << YAML::Value << mat.roughness;
     out << YAML::Key << "AO" << YAML::Value << mat.ao;
     out << YAML::Key << "Emissive" << YAML::Value << mat.emissive;
-    out << YAML::Key << "AlbedoTexturePath" << YAML::Value
-        << mat.albedoTexturePath;
-    out << YAML::Key << "NormalTexturePath" << YAML::Value
-        << mat.normalTexturePath;
-    out << YAML::Key << "MetallicTexturePath" << YAML::Value
-        << mat.metallicTexturePath;
-    out << YAML::Key << "RoughnessTexturePath" << YAML::Value
-        << mat.roughnessTexturePath;
-    out << YAML::Key << "AOTexturePath" << YAML::Value << mat.aoTexturePath;
+    out << YAML::Key << "AlbedoTextureHandle" << YAML::Value << mat.albedoTextureHandle;
+    out << YAML::Key << "NormalTextureHandle" << YAML::Value << mat.normalTextureHandle;
+    out << YAML::Key << "MetallicTextureHandle" << YAML::Value << mat.metallicTextureHandle;
+    out << YAML::Key << "RoughnessTextureHandle" << YAML::Value << mat.roughnessTextureHandle;
+    out << YAML::Key << "AOTextureHandle" << YAML::Value << mat.aoTextureHandle;
     out << YAML::EndMap;
   }
 
@@ -197,6 +193,23 @@ void SceneSerializer::Serialize(const std::string &filepath) {
   if (m_Scene->HasTerrain() && !m_Scene->GetTerrainPath().empty()) {
     out << YAML::Key << "TerrainPath" << YAML::Value
         << m_Scene->GetTerrainPath();
+  }
+
+  // Save skybox settings
+  if (m_Scene->IsSkyboxEnabled()) {
+    out << YAML::Key << "SkyboxEnabled" << YAML::Value << true;
+    if (!m_Scene->GetSkyboxHDRPath().empty()) {
+      out << YAML::Key << "SkyboxHDRPath" << YAML::Value
+          << m_Scene->GetSkyboxHDRPath();
+    }
+    if (m_Scene->HasSkybox()) {
+      out << YAML::Key << "SkyboxIntensity" << YAML::Value
+          << m_Scene->GetSkybox()->GetIntensity();
+      out << YAML::Key << "SkyboxLOD" << YAML::Value
+          << m_Scene->GetSkybox()->GetLod();
+    }
+  } else {
+    out << YAML::Key << "SkyboxEnabled" << YAML::Value << false;
   }
 
   out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
@@ -276,6 +289,33 @@ bool SceneSerializer::DeserializeFromString(const std::string &yamlString) {
     m_Scene->LoadTerrainFromFile(terrainPath);
   }
 
+  // Load skybox settings
+  if (data["SkyboxEnabled"]) {
+    bool skyboxEnabled = data["SkyboxEnabled"].as<bool>();
+    m_Scene->EnableSkybox(skyboxEnabled);
+
+    if (skyboxEnabled && data["SkyboxHDRPath"]) {
+      std::string hdrPath = data["SkyboxHDRPath"].as<std::string>();
+      m_Scene->SetSkyboxHDRPath(hdrPath);
+
+      // Load the HDR skybox
+      if (!hdrPath.empty()) {
+        m_Scene->EnableSkybox(true);
+        if (m_Scene->HasSkybox()) {
+          m_Scene->GetSkybox()->LoadFromHDR(hdrPath);
+
+          // Load intensity and LOD if specified
+          if (data["SkyboxIntensity"]) {
+            m_Scene->GetSkybox()->SetIntensity(data["SkyboxIntensity"].as<float>());
+          }
+          if (data["SkyboxLOD"]) {
+            m_Scene->GetSkybox()->SetLod(data["SkyboxLOD"].as<float>());
+          }
+        }
+      }
+    }
+  }
+
   auto entities = data["Entities"];
   if (entities) {
     for (auto entityNode : entities) {
@@ -298,20 +338,21 @@ bool SceneSerializer::DeserializeFromString(const std::string &yamlString) {
         tc.scale = transformComponent["Scale"].as<glm::vec3>();
       }
 
-      // MeshComponent
-      auto meshComponent = entityNode["MeshComponent"];
-      if (meshComponent) {
-        auto &mc = world.AddComponent<MeshComponent>(entity);
-        mc.meshType =
-            static_cast<MeshType>(meshComponent["MeshType"].as<int>());
-        mc.modelPath = meshComponent["ModelPath"].as<std::string>();
-        if (meshComponent["CastShadows"])
-          mc.castShadows = meshComponent["CastShadows"].as<bool>();
-        if (meshComponent["ReceiveShadows"])
-          mc.receiveShadows = meshComponent["ReceiveShadows"].as<bool>();
-
-        // Model will be loaded on-demand during rendering, not during scene
-        // deserialization
+      // StaticMeshComponent
+      auto staticMeshComponent = entityNode["StaticMeshComponent"];
+      if (staticMeshComponent) {
+        auto &smc = world.AddComponent<StaticMeshComponent>(entity);
+        if (staticMeshComponent["MeshSourceHandle"])
+          smc.meshSourceHandle = staticMeshComponent["MeshSourceHandle"].as<u64>();
+        if (staticMeshComponent["PrimitiveType"])
+          smc.primitiveType =
+              static_cast<MeshType>(staticMeshComponent["PrimitiveType"].as<int>());
+        if (staticMeshComponent["CastShadows"])
+          smc.castShadows = staticMeshComponent["CastShadows"].as<bool>();
+        if (staticMeshComponent["ReceiveShadows"])
+          smc.receiveShadows = staticMeshComponent["ReceiveShadows"].as<bool>();
+        if (staticMeshComponent["Visible"])
+          smc.visible = staticMeshComponent["Visible"].as<bool>();
       }
 
       // MaterialComponent
@@ -323,21 +364,16 @@ bool SceneSerializer::DeserializeFromString(const std::string &yamlString) {
         mat.roughness = materialComponent["Roughness"].as<float>();
         mat.ao = materialComponent["AO"].as<float>();
         mat.emissive = materialComponent["Emissive"].as<glm::vec3>();
-        if (materialComponent["AlbedoTexturePath"])
-          mat.albedoTexturePath =
-              materialComponent["AlbedoTexturePath"].as<std::string>();
-        if (materialComponent["NormalTexturePath"])
-          mat.normalTexturePath =
-              materialComponent["NormalTexturePath"].as<std::string>();
-        if (materialComponent["MetallicTexturePath"])
-          mat.metallicTexturePath =
-              materialComponent["MetallicTexturePath"].as<std::string>();
-        if (materialComponent["RoughnessTexturePath"])
-          mat.roughnessTexturePath =
-              materialComponent["RoughnessTexturePath"].as<std::string>();
-        if (materialComponent["AOTexturePath"])
-          mat.aoTexturePath =
-              materialComponent["AOTexturePath"].as<std::string>();
+        if (materialComponent["AlbedoTextureHandle"])
+          mat.albedoTextureHandle = materialComponent["AlbedoTextureHandle"].as<u64>();
+        if (materialComponent["NormalTextureHandle"])
+          mat.normalTextureHandle = materialComponent["NormalTextureHandle"].as<u64>();
+        if (materialComponent["MetallicTextureHandle"])
+          mat.metallicTextureHandle = materialComponent["MetallicTextureHandle"].as<u64>();
+        if (materialComponent["RoughnessTextureHandle"])
+          mat.roughnessTextureHandle = materialComponent["RoughnessTextureHandle"].as<u64>();
+        if (materialComponent["AOTextureHandle"])
+          mat.aoTextureHandle = materialComponent["AOTextureHandle"].as<u64>();
       }
 
       // LightComponent

@@ -362,6 +362,20 @@ bool ModelImportDialog::PerformImport() {
     ExtractEmbeddedTexturesToFolder(destModelFile, texDir);
   }
 
+  // Use AssimpMeshImporter to import the mesh
+  AssimpMeshImporter importer(destModelFile);
+  MeshImportResult result = importer.Import(MeshImportFlags::Default);
+  
+  if (!result.success) {
+    GINI_ERROR("ModelImportDialog: AssimpMeshImporter failed: ", result.errorMessage);
+    return false;
+  }
+
+  // Store imported assets
+  m_ImportedMeshSource = result.meshSource;
+  m_ImportedMaterials = result.materials;
+
+  // Generate manifest file
   if (!GenerateGMeshManifest(destDir)) {
     GINI_ERROR("ModelImportDialog: failed to generate .gmesh manifest");
     return false;
@@ -371,10 +385,13 @@ bool ModelImportDialog::PerformImport() {
 
   GINI_INFO("Model imported to: ", destDir.string());
 
-  if (m_OnImportComplete) {
-    std::filesystem::path gmeshPath =
-        destDir / (m_Settings.assetName + ".gmesh");
-    m_OnImportComplete(gmeshPath.string());
+  // Invoke callback with mesh source handle and material handles
+  if (m_OnImportComplete && m_ImportedMeshSource) {
+    std::vector<u64> materialHandles;
+    for (const auto& mat : m_ImportedMaterials) {
+      materialHandles.push_back(mat->GetHandle());
+    }
+    m_OnImportComplete(m_ImportedMeshSource->GetHandle(), materialHandles);
   }
 
   return true;

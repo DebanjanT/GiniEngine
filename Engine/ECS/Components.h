@@ -134,24 +134,48 @@ struct AIComponent {
 // 3D Rendering Components
 enum class MeshType { None = 0, Cube, Sphere, Plane, Cylinder, Custom };
 
-struct MeshComponent {
-  MeshType meshType = MeshType::Cube;
-  std::string modelPath;
+// StaticMeshComponent: References a MeshSource asset for static geometry
+// Supports per-instance material overrides via handles
+struct StaticMeshComponent {
+  u64 meshSourceHandle = 0;              // Handle to MeshSource asset
+  MeshType primitiveType = MeshType::None; // For built-in primitives (Cube, Sphere, etc.)
+  std::vector<u32> submeshIndices;       // Which submeshes to render (empty = all)
+  std::vector<u64> materialOverrides;    // Per-submesh material overrides (0 = use default)
   bool castShadows = true;
   bool receiveShadows = true;
+  bool visible = true;
 };
 
+// DynamicMeshComponent: For rigged/animated meshes with skeletal animation
+struct DynamicMeshComponent {
+  u64 meshSourceHandle = 0;              // Handle to MeshSource asset
+  std::vector<u32> submeshIndices;       // Which submeshes to render (empty = all)
+  std::vector<u64> materialOverrides;    // Per-submesh material overrides
+  bool castShadows = true;
+  bool receiveShadows = true;
+  bool visible = true;
+};
+
+// MaterialComponent: PBR material properties for an entity
+// Can be used standalone or with MaterialAssetComponent for asset-based materials
 struct MaterialComponent {
   Vec3 albedo{1.0f, 1.0f, 1.0f};
   f32 metallic = 0.0f;
   f32 roughness = 0.5f;
   f32 ao = 1.0f;
   Vec3 emissive{0.0f, 0.0f, 0.0f};
-  std::string albedoTexturePath;
-  std::string normalTexturePath;
-  std::string metallicTexturePath;
-  std::string roughnessTexturePath;
-  std::string aoTexturePath;
+  
+  // Texture asset handles (0 = no texture)
+  u64 albedoTextureHandle = 0;
+  u64 normalTextureHandle = 0;
+  u64 metallicTextureHandle = 0;
+  u64 roughnessTextureHandle = 0;
+  u64 aoTextureHandle = 0;
+};
+
+// MaterialAssetComponent: References a MaterialAsset for shared material definitions
+struct MaterialAssetComponent {
+  u64 materialHandle = 0;  // Handle to MaterialAsset
 };
 
 struct LightComponent {

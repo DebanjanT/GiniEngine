@@ -15,6 +15,7 @@
 #include "Scene/SceneSerializer.h"
 #include "UI/ImGuiLayer.h"
 #include "Utils/FileDialog.h"
+#include "Core/LoadingIndicator.h"
 
 #include <glad/gl.h>
 
@@ -431,6 +432,9 @@ void EditorApp::OnRender() {
   if (m_ShowDemoWindow) {
     ImGui::ShowDemoWindow(&m_ShowDemoWindow);
   }
+
+  // Render loading indicator overlay (always on top)
+  LoadingIndicator::Get().RenderOverlay();
 
   ImGuiLayer::End();
 }
@@ -896,9 +900,11 @@ void EditorApp::DrawViewport() {
         auto &smc =
             m_ActiveScene->GetWorld().AddComponent<StaticMeshComponent>(entity);
 
-        // Import mesh using AssimpMeshImporter
+        // Import mesh using AssimpMeshImporter with loading indicator
+        u64 loadTaskId = LoadingIndicator::Get().BeginTask("Importing Model", name);
         AssimpMeshImporter importer(modelFilePath);
         auto result = importer.Import();
+        LoadingIndicator::Get().EndTask(loadTaskId);
         if (result.success && result.meshSource) {
           // Add to MeshSourceLibrary with a UUID-based handle
           u64 handle = AssetRegistry::Get().RegisterAsset(p, AssetType::MeshSource);
@@ -942,9 +948,11 @@ void EditorApp::DrawViewport() {
           auto &smc =
               m_ActiveScene->GetWorld().AddComponent<StaticMeshComponent>(entity);
 
-          // Import mesh using AssimpMeshImporter
+          // Import mesh using AssimpMeshImporter with loading indicator
+          u64 loadTaskId = LoadingIndicator::Get().BeginTask("Importing Model", name);
           AssimpMeshImporter importer(assetPath);
           auto result = importer.Import();
+          LoadingIndicator::Get().EndTask(loadTaskId);
           if (result.success && result.meshSource) {
             // Add to MeshSourceLibrary with a UUID-based handle
             u64 handle = AssetRegistry::Get().RegisterAsset(p, AssetType::MeshSource);
@@ -954,13 +962,11 @@ void EditorApp::DrawViewport() {
 
             // Store imported materials in MaterialAssetLibrary
             for (size_t i = 0; i < result.materials.size(); ++i) {
-              // Generate unique handle for each material
               std::string matName = result.materials[i]->GetName();
               std::filesystem::path matPath = p / (matName + ".ginimat");
               u64 matHandle = AssetRegistry::Get().RegisterAsset(matPath, AssetType::MaterialAsset);
               MaterialAssetLibrary::Get().Add(matHandle, result.materials[i]);
               smc.materialOverrides.push_back(matHandle);
-              GINI_INFO("Registered material '", matName, "' with handle ", matHandle);
             }
           } else {
             // Fallback to cube if import fails

@@ -1234,7 +1234,7 @@ void Renderer3D::RenderStaticMesh(u64 meshSourceHandle, const Mat4 &transform,
         materialAsset = MaterialAssetLibrary::Get().Get(matHandles[submesh.MaterialIndex]);
       }
     }
-
+    
     // Setup rendering
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
     glEnable(GL_CULL_FACE);

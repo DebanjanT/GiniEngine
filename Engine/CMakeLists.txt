@@ -9,6 +9,7 @@ set(ENGINE_SOURCES
     Core/Input.cpp
     Core/Threading.cpp
     Core/ThreadProfiler.cpp
+    Core/LoadingIndicator.cpp
 
     # Window
     Window/Window.cpp

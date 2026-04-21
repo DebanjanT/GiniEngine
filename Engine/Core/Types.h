@@ -8,11 +8,10 @@
 #include <string>
 #include <vector>
 
-namespace Gini {
+// Bit manipulation macro
+#define BIT(x) (1u << (x))
 
-// Entity type from EnTT
-using Entity = entt::entity;
-constexpr Entity NullEntity = entt::null;
+namespace Gini {
 
 // Type aliases
 using i8 = int8_t;
@@ -62,6 +61,14 @@ using Mat4 = GMat4;
 using IVec2 = GIVec2;
 using IVec3 = GIVec3;
 using IVec4 = GIVec4;
+
+// Entity type from EnTT
+using Entity = entt::entity;
+constexpr Entity NullEntity = entt::null;
+
+// Asset Handle type
+using AssetHandle = u64;
+constexpr AssetHandle NullAssetHandle = 0;
 
 // Color
 struct Color {

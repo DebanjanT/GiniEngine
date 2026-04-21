@@ -32,8 +32,9 @@ struct LoadableAssetInfo {
     bool loaded = false;
 };
 
+// Legacy asset handle wrapper (renamed to avoid conflict with AssetHandle type alias)
 template<typename T>
-struct AssetHandle {
+struct LoadedAsset {
     Ref<T> asset;
     LoadableAssetInfo metadata;
     
@@ -44,9 +45,9 @@ struct AssetHandle {
     const T* operator->() const { return asset.get(); }
 };
 
-using TextureHandle = AssetHandle<Texture2D>;
-using ShaderHandle = AssetHandle<Shader>;
-using MeshSourceHandle = AssetHandle<MeshSource>;
+using TextureAsset = LoadedAsset<Texture2D>;
+using ShaderAsset = LoadedAsset<Shader>;
+using MeshSourceAsset = LoadedAsset<MeshSource>;
 
 class AssetManager {
 public:
@@ -61,19 +62,19 @@ public:
     void Update();
     
     // Synchronous loading
-    TextureHandle LoadTexture(const std::string& path);
-    ShaderHandle LoadShader(const std::string& path);
-    ShaderHandle LoadShader(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc);
-    MeshSourceHandle LoadMeshSource(const std::string& path);
+    TextureAsset LoadTexture(const std::string& path);
+    ShaderAsset LoadShader(const std::string& path);
+    ShaderAsset LoadShader(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc);
+    MeshSourceAsset LoadMeshSource(const std::string& path);
     
     // Asynchronous loading
-    void LoadTextureAsync(const std::string& path, std::function<void(TextureHandle)> callback);
-    void LoadMeshSourceAsync(const std::string& path, std::function<void(MeshSourceHandle)> callback);
+    void LoadTextureAsync(const std::string& path, std::function<void(TextureAsset)> callback);
+    void LoadMeshSourceAsync(const std::string& path, std::function<void(MeshSourceAsset)> callback);
     
     // Get cached assets
-    TextureHandle GetTexture(const std::string& path);
-    ShaderHandle GetShader(const std::string& name);
-    MeshSourceHandle GetMeshSource(const std::string& path);
+    TextureAsset GetTexture(const std::string& path);
+    ShaderAsset GetShader(const std::string& name);
+    MeshSourceAsset GetMeshSource(const std::string& path);
     
     // Check if asset is loaded
     bool IsTextureLoaded(const std::string& path) const;
@@ -110,9 +111,9 @@ private:
     bool m_HotReloadEnabled = false;
     bool m_EnableLoaderThread = true;
     
-    std::unordered_map<std::string, TextureHandle> m_Textures;
-    std::unordered_map<std::string, ShaderHandle> m_Shaders;
-    std::unordered_map<std::string, MeshSourceHandle> m_MeshSources;
+    std::unordered_map<std::string, TextureAsset> m_Textures;
+    std::unordered_map<std::string, ShaderAsset> m_Shaders;
+    std::unordered_map<std::string, MeshSourceAsset> m_MeshSources;
     mutable std::mutex m_AssetMutex;
     
     WorkerThread m_AssetLoaderThread;

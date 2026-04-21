@@ -12,7 +12,6 @@
 #include "Panels/ThreadAnalysisPanel.h"
 #include "Panels/TerrainEditorWindow.h"
 #include "Panels/TerrainPanel.h"
-#include "Panels/WeatherPanel.h"
 #include "Panels/ModelImportDialog.h"
 #include "Renderer/Camera3D.h"
 #include "Renderer/Framebuffer.h"
@@ -87,9 +86,6 @@ private:
 
   // Thread Analysis
   ThreadAnalysisPanel m_ThreadAnalysisPanel;
-
-  // Weather System
-  WeatherPanel m_WeatherPanel;
 
   // Model Import Dialog
   ModelImportDialog m_ModelImportDialog;

@@ -21,7 +21,6 @@ set(EDITOR_SOURCES
     Panels/MaterialEditorPanel.cpp
     Panels/ProjectLauncher.cpp
     Panels/ScenePropertiesPanel.cpp
-    Panels/WeatherPanel.cpp
     Panels/ThreadAnalysisPanel.cpp
     Panels/ModelImportDialog.cpp
     ${FILEDIALOG_SOURCE}
@@ -40,7 +39,6 @@ set(EDITOR_HEADERS
     Panels/MaterialEditorPanel.h
     Panels/ProjectLauncher.h
     Panels/ScenePropertiesPanel.h
-    Panels/WeatherPanel.h
     Panels/ThreadAnalysisPanel.h
     Panels/ModelImportDialog.h
     Utils/FileDialog.h

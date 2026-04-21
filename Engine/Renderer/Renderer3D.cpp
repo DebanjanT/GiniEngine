@@ -641,17 +641,27 @@ void Renderer3D::Shutdown() {
 
 void Renderer3D::InitShaders() {
   s_Data->pbrShader = Shader::Create(s_PBRVertexShader, s_PBRFragmentShader);
+  GINI_INFO("[Renderer3D] PBR shader: ", s_Data->pbrShader ? "OK" : "FAILED");
+
   s_Data->skinnedPBRShader =
       Shader::Create(s_SkinnedPBRVertexShader, s_PBRFragmentShader);
+  GINI_INFO("[Renderer3D] SkinnedPBR shader: ", s_Data->skinnedPBRShader ? "OK" : "FAILED");
+
   s_Data->basicShader =
       Shader::Create(s_BasicVertexShader, s_BasicFragmentShader);
+  GINI_INFO("[Renderer3D] Basic shader: ", s_Data->basicShader ? "OK" : "FAILED");
+
   s_Data->lineShader = Shader::Create(s_LineVertexShader, s_LineFragmentShader);
+  GINI_INFO("[Renderer3D] Line shader: ", s_Data->lineShader ? "OK" : "FAILED");
 }
 
 void Renderer3D::InitPrimitives() {
   s_Data->cubeMesh = Mesh::CreateCube(1.0f);
   s_Data->sphereMesh = Mesh::CreateSphere(1.0f, 32, 16);
   s_Data->planeMesh = Mesh::CreatePlane(1.0f, 1.0f);
+  GINI_INFO("[Renderer3D] Primitives: cube=", s_Data->cubeMesh ? "OK" : "FAILED",
+            " sphere=", s_Data->sphereMesh ? "OK" : "FAILED",
+            " plane=", s_Data->planeMesh ? "OK" : "FAILED");
 }
 
 void Renderer3D::BeginScene(const Camera3D &camera) {
@@ -781,11 +791,8 @@ void Renderer3D::DrawMesh(const Ref<Mesh> &mesh, const Mat4 &transform,
     material.albedoMap->Bind(textureUnit);
     s_Data->pbrShader->SetInt("u_AlbedoMap", textureUnit++);
     s_Data->pbrShader->SetInt("u_HasAlbedoMap", 1);
-    GINI_DEBUG("DrawMesh: Bound albedo texture id=",
-               material.albedoMap->GetID(), " to unit ", textureUnit - 1);
   } else {
     s_Data->pbrShader->SetInt("u_HasAlbedoMap", 0);
-    GINI_DEBUG("DrawMesh: No albedo texture available, using material color");
   }
 
   if (material.normalMap) {

@@ -55,7 +55,6 @@ set(ENGINE_SOURCES
 
     # Particles
     Particles/ParticleSystem.cpp
-    Particles/RainSystem.cpp
 
     # Network
     Network/Network.cpp

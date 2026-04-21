@@ -36,10 +36,10 @@ EditorApp::EditorApp()
         config.windowTitle = "Gini Editor";
         config.windowWidth = 1920;
         config.windowHeight = 1080;
-        config.vsync = true;
-        config.enableRenderThread = true;
+        config.vsync = false;
+        config.enableRenderThread = false;
         config.enableAssetLoadingThread = true;
-        config.enableNetworkThread = true;
+        config.enableNetworkThread = false;
         return config;
       }()) {}
 
@@ -51,9 +51,6 @@ void EditorApp::OnInit() {
 
   // Initialize 3D Renderer
   Renderer3D::Init();
-
-  // Initialize Weather System
-  WeatherSystem::Init();
 
   // Create HDR framebuffer for 3D scene rendering
   FramebufferSpec hdrSpec;
@@ -69,11 +66,11 @@ void EditorApp::OnInit() {
   FramebufferSpec fbSpec;
   fbSpec.width = 1280;
   fbSpec.height = 720;
-  fbSpec.colorAttachments = {{FramebufferTextureFormat::RGBA8}};
+  fbSpec.colorAttachments = { {FramebufferTextureFormat::RGBA8} };
   m_Framebuffer = Framebuffer::Create(fbSpec);
 
   // Initialize post-processing, shadows, IBL, SSAO
-  PostProcess::Init();
+ PostProcess::Init();
   ShadowMap::Init();
   IBL::Init();
   SSAO::Init(1280, 720);
@@ -85,6 +82,15 @@ void EditorApp::OnInit() {
 
   m_CameraController = CreateScope<OrbitCameraController>(m_EditorCamera.get());
   m_CameraController->SetDistance(15.0f);
+
+  // Setup default lights so the PBR shader has something to work with
+  LightManager::Get().SetDirectionalLight(DirectionalLight{});
+  {
+    AmbientLight amb;
+    amb.color = Vec3(0.25f);
+    amb.intensity = 1.0f;
+    LightManager::Get().SetAmbientLight(amb);
+  }
 
   // Create default scene
   NewScene();
@@ -107,7 +113,6 @@ void EditorApp::OnInit() {
   m_ConsolePanel.SetVisible(true);
   m_TerrainPanel.SetVisible(true);
   m_AssetBrowserPanel.SetVisible(true);
-  m_WeatherPanel.SetVisible(false);
 
   // No default terrain -- user creates/links terrain via Scene Properties or Terrain Editor
   m_Terrain = nullptr;
@@ -120,7 +125,6 @@ void EditorApp::OnShutdown() {
   IBL::Shutdown();
   ShadowMap::Shutdown();
   PostProcess::Shutdown();
-  WeatherSystem::Shutdown();
   Renderer3D::Shutdown();
   ImGuiLayer::Shutdown();
   GINI_INFO("Gini Editor shutdown!");
@@ -157,9 +161,6 @@ void EditorApp::OnUpdate(f32 deltaTime) {
   // Update terrain editor window
   m_TerrainEditorWindow.OnUpdate(deltaTime);
 
-  // Update weather panel
-  m_WeatherPanel.OnUpdate(deltaTime);
-
   // Update thread analysis panel
   m_ThreadAnalysisPanel.OnUpdate(deltaTime);
 
@@ -174,7 +175,6 @@ void EditorApp::OnUpdate(f32 deltaTime) {
     m_ActiveScene->GetAtmosphericSky()->Update(deltaTime);
   }
 
-  WeatherSystem::Update(deltaTime);
 }
 
 void EditorApp::OnRender() {
@@ -367,21 +367,14 @@ void EditorApp::OnRender() {
     }
   }
 
-  WeatherSystem::UpdateRainPosition(m_EditorCamera->GetPosition());
-  WeatherSystem::Render(m_EditorCamera->GetViewProjectionMatrix());
-
   Renderer3D::EndScene();
   m_HDRFramebuffer->Unbind();
 
-  // -- SSAO pass --
+  // SSAO disabled: HDR framebuffer uses GL_DEPTH24_STENCIL8 (combined depth-stencil)
+  // which NVIDIA samples incorrectly as a plain sampler2D, returning near-zero values.
+  // PostProcess multiplies hdrColor *= ao, making the entire frame black.
+  // Fix: switch HDR framebuffer to GL_DEPTH_COMPONENT32F before re-enabling SSAO.
   u32 ssaoTexture = 0;
-  if (SSAO::IsInitialized()) {
-    SSAO::Render(m_HDRFramebuffer->GetDepthAttachment(),
-                 m_HDRFramebuffer->GetColorAttachment(1),
-                 m_EditorCamera->GetProjectionMatrix(),
-                 m_EditorCamera->GetViewMatrix());
-    ssaoTexture = SSAO::GetSSAOTexture();
-  }
 
   // Post-process: resolve HDR to LDR framebuffer with ACES tonemapping
   m_Framebuffer->Bind();
@@ -423,7 +416,6 @@ void EditorApp::OnRender() {
     m_TerrainPanel.OnImGuiRender();
     m_AssetBrowserPanel.OnImGuiRender();
     m_ScenePropertiesPanel.OnImGuiRender();
-    m_WeatherPanel.OnImGuiRender();
     m_ThreadAnalysisPanel.OnImGuiRender();
 
     m_ModelImportDialog.OnImGuiRender();
@@ -581,7 +573,6 @@ void EditorApp::SetupDockspace() {
       ImGui::DockBuilderDockWindow("Console", dockBottomLeft);
       ImGui::DockBuilderDockWindow("Stats", dockBottomLeft);
       ImGui::DockBuilderDockWindow("Asset Browser", dockBottomRight);
-      ImGui::DockBuilderDockWindow("Weather System", dockRight);
       ImGui::DockBuilderDockWindow("Thread Analysis", dockBottomLeft);
 
       ImGui::DockBuilderFinish(dockspaceId);
@@ -726,8 +717,6 @@ void EditorApp::DrawMenuBar() {
       ImGui::Separator();
       ImGui::TextDisabled("Systems");
       ImGui::Separator();
-      ImGui::MenuItem("Weather System", nullptr,
-                      &m_WeatherPanel.GetVisibleRef());
       ImGui::MenuItem("Thread Analysis", nullptr,
                       &m_ThreadAnalysisPanel.m_Visible);
       ImGui::Separator();
@@ -1091,18 +1080,18 @@ void EditorApp::NewScene() {
   m_ScenePropertiesPanel.SetScene(m_ActiveScene);
   m_SelectedEntity = NullEntity;
 
-  // Create some default entities to click on
-  auto cube1 = m_ActiveScene->CreateEntity("Cube 1");
-  auto &t1 = m_ActiveScene->GetWorld().GetComponent<TransformComponent>(cube1);
-  t1.position = Vec3(-3.0f, 0.5f, 0.0f);
-
-  auto cube2 = m_ActiveScene->CreateEntity("Cube 2");
-  auto &t2 = m_ActiveScene->GetWorld().GetComponent<TransformComponent>(cube2);
-  t2.position = Vec3(0.0f, 0.5f, 0.0f);
-
-  auto cube3 = m_ActiveScene->CreateEntity("Cube 3");
-  auto &t3 = m_ActiveScene->GetWorld().GetComponent<TransformComponent>(cube3);
-  t3.position = Vec3(3.0f, 0.5f, 0.0f);
+  // Create some default entities
+  auto addDefaultCube = [&](const char* name, Vec3 pos) {
+    auto e = m_ActiveScene->CreateEntity(name);
+    auto &t = m_ActiveScene->GetWorld().GetComponent<TransformComponent>(e);
+    t.position = pos;
+    auto &smc = m_ActiveScene->GetWorld().AddComponent<StaticMeshComponent>(e);
+    smc.primitiveType = MeshType::Cube;
+    m_ActiveScene->GetWorld().AddComponent<MaterialComponent>(e);
+  };
+  addDefaultCube("Cube 1", Vec3(-3.0f, 0.5f, 0.0f));
+  addDefaultCube("Cube 2", Vec3( 0.0f, 0.5f, 0.0f));
+  addDefaultCube("Cube 3", Vec3( 3.0f, 0.5f, 0.0f));
 
   GINI_INFO("New scene created with 3 cubes");
 }

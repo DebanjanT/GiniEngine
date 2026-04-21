@@ -66,7 +66,7 @@ LoadableAssetType AssetManager::GetAssetType(const std::string& path) const {
     return LoadableAssetType::Unknown;
 }
 
-TextureHandle AssetManager::LoadTexture(const std::string& path) {
+TextureAsset AssetManager::LoadTexture(const std::string& path) {
     {
         std::lock_guard<std::mutex> lock(m_AssetMutex);
         auto it = m_Textures.find(path);
@@ -77,7 +77,7 @@ TextureHandle AssetManager::LoadTexture(const std::string& path) {
     
     std::string fullPath = ResolvePath(path);
     
-    TextureHandle handle;
+    TextureAsset handle;
     handle.metadata.path = path;
     handle.metadata.type = LoadableAssetType::Texture;
     handle.asset = Texture2D::Create(fullPath);
@@ -94,7 +94,7 @@ TextureHandle AssetManager::LoadTexture(const std::string& path) {
     return handle;
 }
 
-ShaderHandle AssetManager::LoadShader(const std::string& path) {
+ShaderAsset AssetManager::LoadShader(const std::string& path) {
     {
         std::lock_guard<std::mutex> lock(m_AssetMutex);
         auto it = m_Shaders.find(path);
@@ -105,7 +105,7 @@ ShaderHandle AssetManager::LoadShader(const std::string& path) {
     
     std::string fullPath = ResolvePath(path);
     
-    ShaderHandle handle;
+    ShaderAsset handle;
     handle.metadata.path = path;
     handle.metadata.type = LoadableAssetType::Shader;
     handle.asset = Shader::CreateFromFile(fullPath);
@@ -122,7 +122,7 @@ ShaderHandle AssetManager::LoadShader(const std::string& path) {
     return handle;
 }
 
-ShaderHandle AssetManager::LoadShader(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc) {
+ShaderAsset AssetManager::LoadShader(const std::string& name, const std::string& vertexSrc, const std::string& fragmentSrc) {
     {
         std::lock_guard<std::mutex> lock(m_AssetMutex);
         auto it = m_Shaders.find(name);
@@ -131,7 +131,7 @@ ShaderHandle AssetManager::LoadShader(const std::string& name, const std::string
         }
     }
     
-    ShaderHandle handle;
+    ShaderAsset handle;
     handle.metadata.path = name;
     handle.metadata.type = LoadableAssetType::Shader;
     handle.asset = Shader::Create(vertexSrc, fragmentSrc);
@@ -148,7 +148,7 @@ ShaderHandle AssetManager::LoadShader(const std::string& name, const std::string
     return handle;
 }
 
-MeshSourceHandle AssetManager::LoadMeshSource(const std::string& path) {
+MeshSourceAsset AssetManager::LoadMeshSource(const std::string& path) {
     {
         std::lock_guard<std::mutex> lock(m_AssetMutex);
         auto it = m_MeshSources.find(path);
@@ -159,7 +159,7 @@ MeshSourceHandle AssetManager::LoadMeshSource(const std::string& path) {
     
     std::string fullPath = ResolvePath(path);
     
-    MeshSourceHandle handle;
+    MeshSourceAsset handle;
     handle.metadata.path = path;
     handle.metadata.type = LoadableAssetType::Model;
     AssimpMeshImporter importer(fullPath);
@@ -178,9 +178,9 @@ MeshSourceHandle AssetManager::LoadMeshSource(const std::string& path) {
     return handle;
 }
 
-void AssetManager::LoadTextureAsync(const std::string& path, std::function<void(TextureHandle)> callback) {
+void AssetManager::LoadTextureAsync(const std::string& path, std::function<void(TextureAsset)> callback) {
     auto loadTask = [this, path, callback]() {
-        TextureHandle handle = LoadTexture(path);
+        TextureAsset handle = LoadTexture(path);
         if (callback) { 
             std::lock_guard<std::mutex> lock(m_AsyncMutex);
             m_CompletionQueue.push([callback, handle]() { callback(handle); });
@@ -194,9 +194,9 @@ void AssetManager::LoadTextureAsync(const std::string& path, std::function<void(
     }
 }
 
-void AssetManager::LoadMeshSourceAsync(const std::string& path, std::function<void(MeshSourceHandle)> callback) {
+void AssetManager::LoadMeshSourceAsync(const std::string& path, std::function<void(MeshSourceAsset)> callback) {
     auto loadTask = [this, path, callback]() {
-        MeshSourceHandle handle = LoadMeshSource(path);
+        MeshSourceAsset handle = LoadMeshSource(path);
         if (callback) {
             std::lock_guard<std::mutex> lock(m_AsyncMutex);
             m_CompletionQueue.push([callback, handle]() { callback(handle); });
@@ -210,31 +210,31 @@ void AssetManager::LoadMeshSourceAsync(const std::string& path, std::function<vo
     }
 }
 
-TextureHandle AssetManager::GetTexture(const std::string& path) {
+TextureAsset AssetManager::GetTexture(const std::string& path) {
     std::lock_guard<std::mutex> lock(m_AssetMutex);
     auto it = m_Textures.find(path);
     if (it != m_Textures.end()) {
         return it->second;
     }
-    return TextureHandle();
+    return TextureAsset();
 }
 
-ShaderHandle AssetManager::GetShader(const std::string& name) {
+ShaderAsset AssetManager::GetShader(const std::string& name) {
     std::lock_guard<std::mutex> lock(m_AssetMutex);
     auto it = m_Shaders.find(name);
     if (it != m_Shaders.end()) {
         return it->second;
     }
-    return ShaderHandle();
+    return ShaderAsset();
 }
 
-MeshSourceHandle AssetManager::GetMeshSource(const std::string& path) {
+MeshSourceAsset AssetManager::GetMeshSource(const std::string& path) {
     std::lock_guard<std::mutex> lock(m_AssetMutex);
     auto it = m_MeshSources.find(path);
     if (it != m_MeshSources.end()) {
         return it->second;
     }
-    return MeshSourceHandle();
+    return MeshSourceAsset();
 }
 
 bool AssetManager::IsTextureLoaded(const std::string& path) const {
